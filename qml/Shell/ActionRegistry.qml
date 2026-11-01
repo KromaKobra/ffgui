@@ -27,6 +27,12 @@ QtObject {
         add(qsTr("Deliver"), qsTr("Add to queue"), "", ["batch"], () => App.render.enqueue());
         add(qsTr("Deliver"), qsTr("Copy the ffmpeg command"), "", ["clipboard", "cli"], () => App.copyText(App.command.text));
 
+        add(qsTr("Tools"), qsTr("FFmpeg tool settings…"), "", ["paths", "configuration"], () => App.requestDialog("settings"));
+        add(qsTr("Tools"), qsTr("Refresh capture devices"), "-sources", ["microphone", "record"], () => App.capture.refreshDevices());
+        add(qsTr("Tools"), qsTr("Compare original and processed"), "asdr / apsnr", ["difference", "checksum"], () => { App.requestPanel("compare"); App.compare.run(); });
+        add(qsTr("Tools"), qsTr("Import transcript…"), "SRT / TXT / JSON", ["speech", "subtitles"], () => App.requestDialog("importTranscript"));
+        add(qsTr("Tools"), qsTr("Stop recording"), "", ["record", "capture"], () => App.capture.stop());
+        add(qsTr("Tools"), qsTr("Stop all streams"), "", ["broadcast", "stream"], () => App.stream.stopAll());
         add(qsTr("Project"), qsTr("New project"), "", [], () => App.project.newProject());
         add(qsTr("Project"), qsTr("Open project…"), "Ctrl+O", [".ffgui", "recipe"], () => App.requestDialog("openProject"));
         add(qsTr("Project"), qsTr("Save project"), "Ctrl+S", [".ffgui", "recipe"], () => App.requestDialog("saveProject"));
@@ -49,8 +55,10 @@ QtObject {
             add(qsTr("Layer"), qsTr("Toggle layer: %1").arg(layer.label), "", ["media view", "overlay"],
                 () => App.view.setLayer(layer.key, !App.view.layer(layer.key)));
 
-        for (let i = 0; i < App.catalog.steps.count; ++i) {
+        const catalogRevision = App.catalog.steps.revision;
+        for (let i = 0; catalogRevision >= 0 && i < App.catalog.steps.count; ++i) {
             const s = App.catalog.steps.get(i);
+            if (!s.available) continue;
             add(qsTr("Add step"), qsTr("Add step: %1").arg(s.name), s.filter, s.keywords.concat([s.category, s.blurb]),
                 () => App.project.addStep(s.key));
         }

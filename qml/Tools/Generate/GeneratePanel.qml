@@ -24,7 +24,7 @@ Item {
     readonly property bool flite: App.caps.state === "ready" && App.caps.hasFilter("flite")
     readonly property string source: {
         switch (panel.kind) {
-        case "tone": return "sine=frequency=" + Math.round(panel.frequency) + ":sample_rate=" + panel.rate + ":duration=" + panel.length;
+        case "tone": return "sine=frequency=" + Math.round(panel.frequency) + ":sample_rate=" + panel.rate + ":duration=" + panel.length + ",volume=" + (panel.amplitude * 8);
         case "silence": return "anullsrc=r=" + panel.rate + ":cl=stereo:d=" + panel.length;
         case "noise": return "anoisesrc=color=" + panel.noiseColor + ":amplitude=" + panel.amplitude + ":r=" + panel.rate + ":d=" + panel.length;
         case "formula": return "aevalsrc='" + panel.formula + "':s=" + panel.rate + ":d=" + panel.length;
@@ -66,6 +66,12 @@ Item {
                 option: ({ key: "frequency", label: qsTr("Frequency"), unit: "Hz", min: 20, max: 20000, step: 1, "default": 1000 })
                 value: panel.frequency
                 onEdited: v => panel.frequency = v
+            }
+            ParamControl {
+                visible: panel.kind === "tone"
+                option: ({ key: "amplitude", label: qsTr("Amplitude"), unit: "", min: 0, max: 1, step: 0.01, "default": 0.5 })
+                value: panel.amplitude
+                onEdited: v => panel.amplitude = v
             }
             ColumnLayout {
                 visible: panel.kind === "noise"
@@ -132,7 +138,8 @@ Item {
             }
             FfButton {
                 Layout.fillWidth: true
-                text: qsTr("Generate as new input")
+                text: App.project.generating ? qsTr("Generating…") : qsTr("Generate as new input")
+                enabled: !App.project.generating
                 highlighted: true
                 onClicked: App.project.addGenerator(panel.source, panel.name)
             }

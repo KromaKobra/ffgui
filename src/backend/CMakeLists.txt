@@ -4,6 +4,8 @@ ffgui_add_qml_module(ffgui_backend
     URI FFgui.Backend
     SOURCES
         App.cpp App.h
+        Tools.cpp Tools.h
+        ToolPlot.cpp ToolPlot.h
         Analysis.cpp Analysis.h
         Capabilities.cpp Capabilities.h
         CatalogFacade.cpp CatalogFacade.h

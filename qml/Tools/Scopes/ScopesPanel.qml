@@ -59,17 +59,22 @@ Item {
             Repeater {
                 model: panel.tile ? panel.tiled : [panel.mode]
                 delegate: ScopeTile {
+                    id: scopeTile
                     required property string modelData
                     kind: modelData
                     title: panel.label(modelData)
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    content: Text {
-                        anchors.centerIn: parent
-                        visible: !App.transport.playing
-                        text: App.project.hasInput ? qsTr("Play to see it live") : qsTr("No input")
-                        color: Theme.textFaint
-                        font.pixelSize: Metrics.fontCaption
+                    content: Item {
+                        anchors.fill: parent
+                        ToolPlot { objectName: "scopePlot"; anchors.fill: parent; source: App.scopes; kind: scopeTile.kind; tone: Theme.wavePeak; gridColor: Theme.line }
+                        Text {
+                            anchors.centerIn: parent
+                            visible: !App.scopes.ready
+                            text: App.project.hasInput ? qsTr("Decoding scope samples…") : qsTr("No input")
+                            color: Theme.textFaint
+                            font.pixelSize: Metrics.fontCaption
+                        }
                     }
                 }
             }

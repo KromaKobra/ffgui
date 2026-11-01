@@ -37,10 +37,12 @@ ColumnLayout {
         Layout.margins: Metrics.spacing
         FfButton {
             text: qsTr("Run as-is")
-            enabled: editor.text.trim() !== ""
+            enabled: editor.text.trim() !== "" && !App.console.active
             tip: qsTr("Runs exactly this text with ffmpeg; output goes to the Log tab")
             onClicked: App.runCommand(editor.text)
         }
+        FfButton { text: qsTr("Stop"); visible: App.console.active; onClicked: App.console.stop() }
+        Caption { visible: App.console.error !== ""; text: App.console.error }
         FfButton {
             text: qsTr("Copy")
             enabled: editor.text.trim() !== ""

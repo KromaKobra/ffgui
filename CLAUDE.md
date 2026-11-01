@@ -28,7 +28,7 @@ Status and the remaining phases: `docs/HANDOFF.md` (read it first).
 
 ## Backend conventions
 
-- `App` (QML singleton) owns everything as CONSTANT sub-objects: project, selection, transport, meters, analysis, render, queue, caps, log, undo, view, command, catalog, transcript, devices, destinations.
+- `App` (QML singleton) owns everything as CONSTANT sub-objects: project, selection, transport, meters, analysis, render, queue, caps, log, undo, view, command, catalog, transcript, devices, destinations, console, compare, scopes, capture, stream, settings. Phase 3 tool facades are in `Tools.h/.cpp`; `ToolPlot` draws their textures.
 - List models are `RowModel` subclasses (`Models.h`). The role list in `Models.cpp` is the contract with QML delegates (`required property` per role). Update rows with `RowModel::update()` so only changed roles signal. To show one row in a sheet, use `ModelRow { model: ...; row: ... }`.
 - Names must not clash between Backend types and QML files (Backend's `Transport` hid `Media/Transport.qml`; it is `TransportBar.qml` now). Model roles must not reuse Item property names (`state`, `index` on a StripedRow, `text` on a Text).
 - Pure logic goes in `src/core` with QtTest coverage in `tests/core`; the Backend is a thin QML face over it.

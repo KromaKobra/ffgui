@@ -34,7 +34,7 @@ public slots:
         engine->rootContext()->setContextProperty(
             QStringLiteral("testEnv"),
             QVariantMap { { "screenshotDir", qEnvironmentVariable("FFGUI_SCREENSHOT_DIR") },
-                          { "loadFixture", m_fixture } });
+                          { "loadFixture", m_fixture }, { "tempDir", m_dir.path() } });
     }
 
 private:

@@ -1,0 +1,4 @@
+Auto-detected sources for alsa:
+  null [Discard all samples (playback) or generate zero samples (capture)] (none)
+  pipewire [PipeWire Sound Server] (none)
+* default [Default ALSA Output (currently PipeWire Media Server)] (none)

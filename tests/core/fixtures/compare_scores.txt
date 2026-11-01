@@ -1,0 +1,17 @@
+[info] Input #0, lavfi, from 'sine=d=0.1':
+[info]   Duration: N/A, start: 0.000000, bitrate: 705 kb/s
+[info]   Stream #0:0: Audio: pcm_s16le, 44100 Hz, mono, s16, 705 kb/s
+[info] Stream mapping:
+[info]   Stream #0:0 (pcm_s16le) -> asplit:default
+[info]   apsnr:default -> Stream #0:0 (pcm_s16le)
+[info] Press [q] to stop, [?] for help
+[info] Output #0, null, to 'pipe:':
+[info]   Metadata:
+[info]     encoder         : Lavf63.1.102
+[info]   Stream #0:0: Audio: pcm_s16le, 44100 Hz, mono, s16, 705 kb/s
+[info]     Metadata:
+[info]       encoder         : Lavc63.1.102 pcm_s16le
+[Parsed_apsnr_3 @ 0x7f1638003500] [info] PSNR ch0: inf dB
+[Parsed_asdr_1 @ 0x7f16380030c0] [info] SDR ch0: inf dB
+[out#0/null @ 0x560992982440] [info] video:0KiB audio:9KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown
+[info] size=N/A time=00:00:00.10 bitrate=N/A speed=88.3x elapsed=0:00:00.00    

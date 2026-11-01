@@ -26,7 +26,8 @@ QJsonObject RecipeJson::encode(const Recipe &r)
             {"links", array(r.links)},
             {"outputs", array(r.outputs)},
             {"markers", array(r.markers)},
-            {"metadata", QJsonObject::fromVariantMap(r.metadata)}};
+            {"metadata", QJsonObject::fromVariantMap(r.metadata)},
+            {"edits", QJsonObject::fromVariantMap(r.edits)}};
 }
 
 bool RecipeJson::decode(const QJsonObject &json, Recipe *recipe, QString *error)
@@ -73,6 +74,7 @@ bool RecipeJson::decode(const QJsonObject &json, Recipe *recipe, QString *error)
             !nodes.contains(link.value(QStringLiteral("to")).toString()))
             return fail(QStringLiteral("Graph link refers to a missing node"));
     r.metadata = json.value(u"metadata").toObject().toVariantMap();
+    r.edits = json.value(u"edits").toObject().toVariantMap();
     *recipe = r;
     return true;
 }

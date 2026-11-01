@@ -13,10 +13,16 @@
 #include <probe/Prober.h>
 #include <util/Format.h>
 
+#include <QBuffer>
+#include <QCryptographicHash>
 #include <QDirIterator>
 #include <QFileInfo>
+#include <QImageReader>
+#include <QStandardPaths>
 #include <QUuid>
 #include <cmath>
+#include <tools/FfTools.h>
+#include <tools/ProcessJob.h>
 
 using namespace ffgui;
 
@@ -91,6 +97,7 @@ Project::Project(QObject *parent)
 
 
     connect(this, &Project::inputChanged, this, &Project::refreshDerived);
+    connect(this, &Project::inputChanged, this, &Project::tagsChanged);
 }
 
 Project::~Project()
@@ -308,7 +315,41 @@ void Project::addUrl(const QString &url)
     setCurrentInput(indexOf(uid));
 }
 
-void Project::addGenerator(const QString &, const QString &) { emit notice(tr("Generated inputs aren't available yet")); }
+void Project::addGenerator(const QString &source, const QString &name)
+{
+    if (m_generating || source.trimmed().isEmpty())
+        return;
+    const QString dir =
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/generated");
+    if (!QDir().mkpath(dir)) {
+        emit notice(tr("Couldn't create the generated audio folder"));
+        return;
+    }
+    const QString path = dir + u'/' + QUuid::createUuid().toString(QUuid::Id128) + QStringLiteral(".wav");
+    auto *job = new ProcessJob(FfTools::paths().ffmpeg,
+                               {"-hide_banner", "-nostdin", "-loglevel", "level+error", "-n", "-f", "lavfi",
+                                "-i", source, "-t", "600", "-c:a", "pcm_f32le", path},
+                               this);
+    m_generator = job;
+    m_generating = true;
+    emit generationChanged();
+    job->setLog(m_log, QStringLiteral("generate"), QStringLiteral("error"));
+    job->setBackground(true);
+    connect(job, &ProcessJob::finished, this, [this, job, path, name, source](bool ok) {
+        m_generator = nullptr;
+        m_generating = false;
+        emit generationChanged();
+        if (ok) {
+            ProjectEdit edit(this, tr("Generate input"));
+            addFiles({QUrl::fromLocalFile(path)});
+            const int row = m_inputs->find(QStringLiteral("path"), path);
+            m_inputs->update(row, {{"kind", "generator"}, {"name", name}, {"lavfi", source}});
+        } else
+            emit notice(job->problems(QStringLiteral("error")).join(u'\n'));
+        job->deleteLater();
+    });
+    job->start();
+}
 
 void Project::probeNext()
 {
@@ -488,8 +529,34 @@ void Project::replaceInput(int index, const QUrl &file)
     probeNext();
 }
 
-void Project::setCoverArt(const QUrl &) { emit notice(tr("Cover art isn't available yet")); }
-void Project::useImpulseResponse(const QUrl &) { emit notice(tr("Impulse responses aren't available yet")); }
+void Project::setCoverArt(const QUrl &url)
+{
+    if (!hasInput() || !url.isLocalFile())
+        return;
+    QImageReader reader(url.toLocalFile());
+    if (reader.size().width() > 16384 || reader.size().height() > 16384) {
+        emit notice(tr("Choose cover art smaller than 16384 pixels"));
+        return;
+    }
+    QImage image = reader.read();
+    if (image.isNull()) {
+        emit notice(tr("Couldn't read the cover image"));
+        return;
+    }
+    if (image.width() > 2048 || image.height() > 2048)
+        image = image.scaled(2048, 2048, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    QByteArray png;
+    QBuffer buffer(&png);
+    buffer.open(QIODevice::WriteOnly);
+    image.save(&buffer, "PNG");
+    ProjectEdit edit(this, tr("Replace cover art"));
+    auto data = m_edits.value(uid(m_currentInput)).toMap();
+    data.insert(QStringLiteral("coverAction"), QStringLiteral("replace"));
+    data.insert(QStringLiteral("coverData"), QString::fromLatin1(png.toBase64()));
+    m_edits.insert(uid(m_currentInput), data);
+    emit tagsChanged();
+}
+void Project::useImpulseResponse(const QUrl &) { emit notice(tr("Convolution needs a second graph input")); }
 
 // ----------------------------------------------------------------------------
 // Chain, outputs and files.
@@ -528,9 +595,10 @@ Recipe Project::recipe() const
     Recipe r;
     r.name = m_name;
     r.metadata = m_tags;
+    r.edits = m_edits;
     r.markers = m_markers;
     for (const auto &row : m_inputs->rows()) {
-        auto input = pick(row, { "uid", "name", "path", "kind" });
+        auto input = pick(row, {"uid", "name", "path", "kind", "lavfi"});
         input.insert(QStringLiteral("files"), inputFiles(m_inputs->find(QStringLiteral("uid"), row.value(QStringLiteral("uid")))));
         r.inputs << input;
     }
@@ -577,6 +645,7 @@ void Project::applyRecipe(const Recipe &r)
     reconcile(m_outputs, r.outputs);
     m_name = r.name;
     m_tags = r.metadata;
+    m_edits = r.edits;
     m_markers = r.markers;
     m_currentInput = std::clamp(indexOf(current), 0, std::max(0, m_inputs->count()-1));
     if (!m_inputs->count()) m_currentInput = -1;
@@ -693,7 +762,9 @@ void Project::applySelectionAction(const QString &action, double start, double e
     else if (action == u"silence") {
         addStep(QStringLiteral("gain"), { { "volume", -120.0 }, { "mute", true } });
         setRange(m_steps->count()-1, start, end);
-    } else if (action == u"marker") m_markers << QVariantMap { { "start", start }, { "end", end }, { "title", tr("Marker") } };
+    } else if (action == u"marker")
+        m_markers << QVariantMap{
+            {"start", start}, {"end", end}, {"title", tr("Marker")}, {"input", uid(m_currentInput)}};
     else {
         if (action == u"step") { m_pendingRangeStart = start; m_pendingRangeEnd = end; }
         emit selectionActionRequested(action, start, end);
@@ -760,11 +831,201 @@ void Project::applyPreset(int index, const QString &name)
     m_outputs->update(index, p->settings);
 }
 
-void Project::setTag(const QString &, const QString &) { emit notice(tr("Editing tags isn't available yet")); }
-void Project::removeTag(const QString &) { }
+QVariantMap Project::tags() const
+{
+    const auto data = m_edits.value(uid(m_currentInput)).toMap();
+    return data.contains(QStringLiteral("tags")) ? data.value(QStringLiteral("tags")).toMap()
+           : !m_tags.isEmpty()                   ? m_tags
+                                                 : input().value(QStringLiteral("tags")).toMap();
+}
+void Project::setTag(const QString &key, const QString &value)
+{
+    if (key == u"__cover") {
+        removeCover();
+        return;
+    }
+    if (!hasInput() || key.trimmed().isEmpty())
+        return;
+    ProjectEdit edit(this, tr("Edit tag"), uid(m_currentInput) + QStringLiteral(":tag:") + key);
+    auto all = tags();
+    all.insert(key, value);
+    auto data = m_edits.value(uid(m_currentInput)).toMap();
+    data.insert(QStringLiteral("tags"), all);
+    m_edits.insert(uid(m_currentInput), data);
+    emit tagsChanged();
+}
+void Project::removeTag(const QString &key)
+{
+    if (!hasInput())
+        return;
+    ProjectEdit edit(this, tr("Remove tag"));
+    auto all = tags();
+    all.remove(key);
+    auto data = m_edits.value(uid(m_currentInput)).toMap();
+    data.insert(QStringLiteral("tags"), all);
+    m_edits.insert(uid(m_currentInput), data);
+    emit tagsChanged();
+}
+QVariantList Project::chapters() const
+{
+    const auto data = m_edits.value(uid(m_currentInput)).toMap();
+    QVariantList result = data.contains(QStringLiteral("chapters"))
+                              ? data.value(QStringLiteral("chapters")).toList()
+                              : input().value(QStringLiteral("chapters")).toList();
+    for (const auto &marker : m_markers)
+        if (marker.value(QStringLiteral("input"), uid(m_currentInput)).toString() == uid(m_currentInput))
+            result << marker;
+    std::stable_sort(result.begin(), result.end(), [](const auto &a, const auto &b) {
+        return a.toMap().value(QStringLiteral("start")).toDouble() <
+               b.toMap().value(QStringLiteral("start")).toDouble();
+    });
+    return result;
+}
+void Project::storeChapters(const QVariantList &chapters)
+{
+    auto data = m_edits.value(uid(m_currentInput)).toMap();
+    data.insert(QStringLiteral("chapters"), chapters);
+    m_edits.insert(uid(m_currentInput), data);
+    m_markers.removeIf([this](const auto &m) {
+        return m.value(QStringLiteral("input"), uid(m_currentInput)).toString() == uid(m_currentInput);
+    });
+    emit tagsChanged();
+}
+void Project::setChapter(int index, double start, double end, const QString &title)
+{
+    auto all = chapters();
+    if (index < 0 || index >= all.size() || !std::isfinite(start) || !std::isfinite(end) || start < 0 ||
+        end <= start)
+        return;
+    ProjectEdit edit(this, tr("Edit chapter"));
+    all[index] = QVariantMap{{"start", start}, {"end", end}, {"title", title}};
+    storeChapters(all);
+}
+void Project::removeChapter(int index)
+{
+    auto all = chapters();
+    if (index < 0 || index >= all.size())
+        return;
+    ProjectEdit edit(this, tr("Remove chapter"));
+    all.removeAt(index);
+    storeChapters(all);
+}
+void Project::addChapter(double start, double end, const QString &title)
+{
+    if (!hasInput() || !std::isfinite(start) || !std::isfinite(end) || start < 0 || end <= start)
+        return;
+    ProjectEdit edit(this, tr("Add chapter"));
+    auto all = chapters();
+    all << QVariantMap{{"start", start}, {"end", end}, {"title", title}};
+    storeChapters(all);
+}
+QVariantList Project::editableTracks() const
+{
+    QVariantList tracks = input().value(QStringLiteral("tracks")).toList();
+    const auto edits = m_edits.value(uid(m_currentInput)).toMap().value(QStringLiteral("tracks")).toMap();
+    for (auto &value : tracks) {
+        auto row = value.toMap();
+        const auto changes =
+            edits.value(QString::number(row.value(QStringLiteral("audioIndex")).toInt())).toMap();
+        for (auto it = changes.begin(); it != changes.end(); ++it)
+            row.insert(it.key(), it.value());
+        value = row;
+    }
+    return tracks;
+}
+void Project::setTrackMetadata(int audioIndex, const QVariantMap &changes)
+{
+    if (!hasInput() || audioIndex < 0 ||
+        audioIndex >= input().value(QStringLiteral("tracks")).toList().size())
+        return;
+    ProjectEdit edit(this, tr("Edit track metadata"));
+    auto data = m_edits.value(uid(m_currentInput)).toMap();
+    auto tracks = data.value(QStringLiteral("tracks")).toMap();
+    auto track = tracks.value(QString::number(audioIndex)).toMap();
+    for (const auto &key : {QStringLiteral("title"), QStringLiteral("lang"), QStringLiteral("isDefault")})
+        if (changes.contains(key))
+            track.insert(key, changes.value(key));
+    tracks.insert(QString::number(audioIndex), track);
+    data.insert(QStringLiteral("tracks"), tracks);
+    m_edits.insert(uid(m_currentInput), data);
+    emit tagsChanged();
+}
+QString Project::cover() const
+{
+    const auto data = m_edits.value(uid(m_currentInput)).toMap();
+    const QString action = data.value(QStringLiteral("coverAction")).toString();
+    return action == u"remove" ? QString()
+           : action == u"replace"
+               ? QStringLiteral("data:image/png;base64,") + data.value(QStringLiteral("coverData")).toString()
+               : input().value(QStringLiteral("cover")).toString();
+}
+void Project::removeCover()
+{
+    if (!hasInput())
+        return;
+    ProjectEdit edit(this, tr("Remove cover art"));
+    auto data = m_edits.value(uid(m_currentInput)).toMap();
+    data.insert(QStringLiteral("coverAction"), QStringLiteral("remove"));
+    data.remove(QStringLiteral("coverData"));
+    m_edits.insert(uid(m_currentInput), data);
+    emit tagsChanged();
+}
+void Project::extractCover(const QUrl &file)
+{
+    if (!file.isLocalFile())
+        return;
+    const auto data = m_edits.value(uid(m_currentInput)).toMap();
+    if (data.value(QStringLiteral("coverAction")).toString() == u"replace") {
+        const auto image = QImage::fromData(
+            QByteArray::fromBase64(data.value(QStringLiteral("coverData")).toString().toLatin1()));
+        emit notice(image.save(file.toLocalFile()) ? tr("Cover art exported")
+                                                   : tr("Couldn't write cover art"));
+        return;
+    }
+    const auto *p = probe(m_currentInput);
+    if (!p || p->coverStream < 0)
+        return;
+    auto *job = new CoverArt(p->path, p->coverStream, m_log, this);
+    connect(job, &CoverArt::finished, this, [this, job, file](bool ok, const QImage &image) {
+        emit notice(ok && image.save(file.toLocalFile()) ? tr("Cover art exported")
+                                                         : tr("Couldn't write cover art"));
+        job->deleteLater();
+    });
+    job->start();
+}
+QVariantMap Project::outputMetadata(int inputIndex) const
+{
+    if (inputIndex < 0 || inputIndex == m_currentInput) {
+        auto data = m_edits.value(uid(m_currentInput)).toMap();
+        data.insert(QStringLiteral("tags"), tags());
+        data.insert(QStringLiteral("chapters"), chapters());
+        return data;
+    }
+    const QString id = uid(inputIndex);
+    auto data = m_edits.value(id).toMap();
+    const auto original = m_inputs->get(inputIndex);
+    if (!data.contains(QStringLiteral("tags")))
+        data.insert(QStringLiteral("tags"),
+                    m_tags.isEmpty() ? original.value(QStringLiteral("tags")).toMap() : m_tags);
+    auto chapters = data.contains(QStringLiteral("chapters"))
+                        ? data.value(QStringLiteral("chapters")).toList()
+                        : original.value(QStringLiteral("chapters")).toList();
+    for (const auto &marker : m_markers)
+        if (marker.value(QStringLiteral("input")).toString() == id)
+            chapters << marker;
+    data.insert(QStringLiteral("chapters"), chapters);
+    return data;
+}
 
 void Project::newProject()
 {
+    if (m_generator) {
+        disconnect(m_generator, nullptr, this, nullptr);
+        delete m_generator;
+        m_generator = nullptr;
+        m_generating = false;
+        emit generationChanged();
+    }
     m_probeQueue.clear();
     m_info.clear();
     m_currentTrack = -1;
@@ -781,6 +1042,13 @@ bool Project::open(const QUrl &file)
     Recipe recipe;
     QString error;
     if (!file.isLocalFile() || !RecipeJson::load(file.toLocalFile(), &recipe, &error)) { emit notice(tr("Couldn't open project: %1").arg(error)); return false; }
+    if (m_generator) {
+        disconnect(m_generator, nullptr, this, nullptr);
+        delete m_generator;
+        m_generator = nullptr;
+        m_generating = false;
+        emit generationChanged();
+    }
     m_probeQueue.clear();
     m_info.clear();
     m_currentTrack = -1;

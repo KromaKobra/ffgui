@@ -113,6 +113,7 @@ Engine::Engine(App *app)
             applyClipping();
     });
     connect(app->media(), &MediaState::updated, this, &Engine::scheduleIdleMeters);
+    connect(app->media()->processed(), &MediaState::updated, this, &Engine::scheduleIdleMeters);
 
     Analysis *analysis = app->analysis();
     connect(analysis, &Analysis::restartRequested, this, [this] {
@@ -161,6 +162,10 @@ Engine::Engine(App *app)
 
 Engine::~Engine()
 {
+    if (m_scopeJob) {
+        disconnect(m_scopeJob, nullptr, this, nullptr);
+        delete m_scopeJob;
+    }
     m_player.stop();
     m_graphProbe.cancel();
     disconnect(&m_renderQueue, nullptr, this, nullptr);
@@ -235,6 +240,14 @@ void Engine::currentChanged()
         m_processedFilter.clear();
         m_app->transport()->setAbAvailability(false, tr("Add an input to compare"));
         m_app->meters()->resetAll();
+        m_app->scopes()->clear();
+        m_scopeKey.clear();
+        m_scopeFrame = -1;
+        if (m_scopeJob) {
+            disconnect(m_scopeJob, nullptr, this, nullptr);
+            delete m_scopeJob;
+            m_scopeJob = nullptr;
+        }
         // A row that is still being read keeps its length for the ruler.
         m_app->transport()->setDuration(project->duration());
         m_app->transport()->setMarkers({});
@@ -457,6 +470,7 @@ QVariantMap Engine::renderTrack() const
     auto track = m_app->project()->track();
     const auto *probe = m_app->project()->probe(m_app->project()->currentInput());
     track.insert(QStringLiteral("coverStream"), probe ? probe->coverStream : -1);
+    track.insert(QStringLiteral("metadataEdits"), m_app->project()->outputMetadata());
     return track;
 }
 
@@ -470,8 +484,13 @@ void Engine::updateBlockers()
     else if (!project->outputs()->count()) blocker = tr("Choose a format first");
     else if (m_app->caps()->state() != u"ready") blocker = tr("Waiting for FFmpeg");
     if (blocker.isEmpty()) {
-        const auto command = CommandBuilder::build(project->probe(project->currentInput())->path, project->track().value(QStringLiteral("audioIndex")).toInt(), renderTrack(), project->duration(), project->steps()->rows(), project->outputs()->rows(), m_app->catalog()->catalog(), m_build);
+        auto command = CommandBuilder::build(
+            project->probe(project->currentInput())->path,
+            project->track().value(QStringLiteral("audioIndex")).toInt(), renderTrack(), project->duration(),
+            project->steps()->rows(), project->outputs()->rows(), m_app->catalog()->catalog(), m_build);
         blocker = command.error;
+        if (blocker.isEmpty() && !command.prepare(&blocker))
+            m_app->logLine(QStringLiteral("error"), blocker);
         if (blocker.isEmpty()) m_app->command()->set(command.args, command.groups);
         else m_app->command()->clear(blocker);
     } else m_app->command()->clear(blocker);
@@ -491,8 +510,8 @@ void Engine::updateChain()
     const auto chain = ChainCompiler::compile(p->steps()->rows(), m_app->catalog()->catalog(), m_build, track.channels, true);
     auto *t = m_app->transport();
     QList<double> markers;
-    for (const auto &c : probe->chapters) markers << c.start;
-    for (const auto &m : p->markers()) markers << m.value(QStringLiteral("start")).toDouble();
+    for (const auto &c : p->chapters())
+        markers << c.toMap().value(QStringLiteral("start")).toDouble();
     t->setMarkers(markers);
     t->setAbAvailability(chain.error.isEmpty() && !chain.filter.isEmpty() && chain.alignment,
         !chain.error.isEmpty() ? chain.error : !chain.alignment ? tr("Speed changes prevent aligned A/B") : tr("Add a step to compare"));
@@ -589,6 +608,9 @@ void Engine::enqueue()
     auto *p = m_app->project();
     const auto nodes = p->steps()->rows(), outputs = p->outputs()->rows();
     const auto catalog = m_app->catalog()->catalog();
+    QHash<QString, QVariantMap> editsByPath;
+    for (int i = 0; i < p->inputs()->count(); ++i)
+        editsByPath.insert(p->inputs()->value(i, QStringLiteral("path")).toString(), p->outputMetadata(i));
     // Probe each batch member, rather than applying the first file's format
     // and duration to a heterogeneous folder. Serial probing bounds memory.
     auto files = std::make_shared<QStringList>();
@@ -599,20 +621,37 @@ void Engine::enqueue()
     }
     auto next = std::make_shared<std::function<void()>>();
     const std::weak_ptr<std::function<void()>> weakNext = next;
-    *next = [this, files, nodes, outputs, catalog, weakNext] {
-        if (files->isEmpty()) return;
+    *next = [this, files, nodes, outputs, catalog, editsByPath, weakNext] {
+        if (files->isEmpty())
+            return;
         const QString path = files->takeFirst();
         auto *probe = new Prober(path, m_app->logStore(), this);
         auto keepNext = weakNext.lock();
-        connect(probe, &Prober::finished, this, [this, probe, path, nodes, outputs, catalog, keepNext](bool ok, const ProbeResult &result, const QString &error, const QStringList &) {
-            probe->deleteLater();
-            if (ok && !result.tracks.isEmpty()) {
-                const auto &track = result.tracks[result.defaultTrack()];
-                QVariantMap format { { "codec", track.codec }, { "rate", track.sampleRate }, { "depth", track.bitsPerSample }, { "channels", track.channels }, { "audioIndex", track.audioIndex }, { "coverStream", result.coverStream } };
-                m_renderQueue.add(BatchExpander::expand({ path }, format, result.duration, nodes, outputs, catalog, m_build));
-            } else m_app->toast(tr("Skipping %1: %2").arg(path, error), QStringLiteral("error"));
-            if (keepNext) (*keepNext)();
-        });
+        connect(
+            probe, &Prober::finished, this,
+            [this, probe, path, nodes, outputs, catalog, editsByPath,
+             keepNext](bool ok, const ProbeResult &result, const QString &error, const QStringList &) {
+                probe->deleteLater();
+                if (ok && !result.tracks.isEmpty()) {
+                    const auto &track = result.tracks[result.defaultTrack()];
+                    QVariantMap format{{"codec", track.codec},           {"rate", track.sampleRate},
+                                       {"depth", track.bitsPerSample},   {"channels", track.channels},
+                                       {"audioIndex", track.audioIndex}, {"coverStream", result.coverStream}};
+                    auto edits = editsByPath.value(path);
+                    if (edits.isEmpty()) {
+                        QVariantList chapters;
+                        for (const auto &c : result.chapters)
+                            chapters << QVariantMap{{"start", c.start}, {"end", c.end}, {"title", c.title}};
+                        edits = {{"tags", result.tags}, {"chapters", chapters}};
+                    }
+                    format.insert(QStringLiteral("metadataEdits"), edits);
+                    m_renderQueue.add(BatchExpander::expand({path}, format, result.duration, nodes, outputs,
+                                                            catalog, m_build));
+                } else
+                    m_app->toast(tr("Skipping %1: %2").arg(path, error), QStringLiteral("error"));
+                if (keepNext)
+                    (*keepNext)();
+            });
         probe->start();
     };
     (*next)();
@@ -693,6 +732,7 @@ void Engine::tick()
                 peak[size_t(c)] = std::max(peak[size_t(c)], std::abs(v));
                 sum[size_t(c)] += v * v;
             }
+        m_app->scopes()->consume(m_tap.data(), int(got), channels, m_player.outputFormat().sampleRate());
         if (m_loudness)
             m_loudness->process(m_tap.data(), got);
         if (channels >= 2)
@@ -702,6 +742,7 @@ void Engine::tick()
     if (total == 0)
         return;
 
+    m_app->scopes()->publish();
     Meters::Reading r;
     const QStringList names = m_app->meters()->channelNames();
     for (int c = 0; c < int(names.size()) && c < channels; ++c) {
@@ -735,6 +776,7 @@ void Engine::idleMeters()
     // Stopped: the values at the playhead.
     MediaState *media = m_app->transport()->ab() == u"processed" && m_app->media()->processed()->ready() ? m_app->media()->processed() : m_app->media();
     Analysis *analysis = m_app->analysis();
+    idleScopes(media);
     const double t = m_app->transport()->position();
     Meters::Reading r;
     const QStringList names = m_app->meters()->channelNames();
@@ -752,6 +794,52 @@ void Engine::idleMeters()
     r.correlation = std::isnan(phase) ? (names.size() == 1 ? 1.0 : 0.0) : phase;
     r.live = false;
     m_app->meters()->apply(r);
+}
+
+// Scopes keep their own short PCM window: borrowing the Media View's single
+// zoom window would make scrolling and stopped scope refreshes cancel each other.
+void Engine::idleScopes(MediaState *media)
+{
+    if (!media->data() || !media->data()->finished() || media->data()->frames() <= 0)
+        return;
+    const auto source = media->source();
+    const qint64 frame = std::clamp(qint64(m_app->transport()->position() * source.sampleRate), qint64(0),
+                                    std::max(qint64(0), media->data()->frames() - 4096));
+    if (m_scopeKey == media->key() && m_scopeFrame == frame)
+        return;
+    m_scopeKey = media->key();
+    m_scopeFrame = frame;
+    if (m_scopeJob) {
+        disconnect(m_scopeJob, nullptr, this, nullptr);
+        delete m_scopeJob;
+    }
+    auto *job = new ProcessJob(
+        FfTools::paths().ffmpeg,
+        PcmReader::decodeArgs(source, double(frame) / source.sampleRate, 4096.0 / source.sampleRate), this);
+    m_scopeJob = job;
+    job->setBackground(true);
+    job->setLog(m_app->logStore(), QStringLiteral("scope samples"), QStringLiteral("error"));
+    job->setKeepStderr(false);
+    auto bytes = std::make_shared<QByteArray>();
+    connect(job, &ProcessJob::stdoutReady, this, [job, bytes, source] {
+        const auto part = job->readStdout();
+        if (bytes->size() < 4096 * source.channels * 4)
+            bytes->append(part.left(4096 * source.channels * 4 - bytes->size()));
+    });
+    connect(job, &ProcessJob::finished, this, [this, job, bytes, source](bool ok) {
+        const auto part = job->readStdout();
+        if (bytes->size() < 4096 * source.channels * 4)
+            bytes->append(part.left(4096 * source.channels * 4 - bytes->size()));
+        m_scopeJob = nullptr;
+        job->deleteLater();
+        if (!ok || m_player.playing())
+            return;
+        m_app->scopes()->clear();
+        m_app->scopes()->consume(reinterpret_cast<const float *>(bytes->constData()),
+                                 bytes->size() / (4 * source.channels), source.channels, source.sampleRate);
+        m_app->scopes()->publish();
+    });
+    job->start();
 }
 
 void Engine::openInFfplay()

@@ -56,6 +56,10 @@ class Project : public QObject
     Q_PROPERTY(QVariantMap converter READ converter NOTIFY negotiatedChanged)
     Q_PROPERTY(QString totalSizeText READ totalSizeText NOTIFY outputsChanged)
     Q_PROPERTY(QVariantMap tags READ tags NOTIFY tagsChanged)
+    Q_PROPERTY(QVariantList chapters READ chapters NOTIFY tagsChanged)
+    Q_PROPERTY(QVariantList editableTracks READ editableTracks NOTIFY tagsChanged)
+    Q_PROPERTY(QString cover READ cover NOTIFY tagsChanged)
+    Q_PROPERTY(bool generating READ generating NOTIFY generationChanged)
 
 public:
     explicit Project(QObject *parent = nullptr);
@@ -89,7 +93,18 @@ public:
     double keptEnd() const { return m_keptEnd; }
     QVariantMap converter() const { return m_converter; }
     QString totalSizeText() const { return m_totalSizeText; }
-    QVariantMap tags() const { return m_tags; }
+    QVariantMap tags() const;
+    QVariantList chapters() const;
+    QVariantList editableTracks() const;
+    QString cover() const;
+    QVariantMap outputMetadata(int inputIndex = -1) const;
+    bool generating() const { return m_generating; }
+    Q_INVOKABLE void extractCover(const QUrl &file);
+    Q_INVOKABLE void removeCover();
+    Q_INVOKABLE void setChapter(int index, double start, double end, const QString &title);
+    Q_INVOKABLE void removeChapter(int index);
+    Q_INVOKABLE void addChapter(double start, double end, const QString &title);
+    Q_INVOKABLE void setTrackMetadata(int audioIndex, const QVariantMap &changes);
 
     // ----- For the engine (C++ only)
     void setServices(ffgui::LogStore *log, std::shared_ptr<CoverStore> covers);
@@ -176,6 +191,7 @@ signals:
     void paramEdited(int index, const QString &key, const QVariant &value);
     void outputsChanged();
     void tagsChanged();
+    void generationChanged();
     // For things the project can't do yet, or can't do with this build.
     void notice(const QString &text);
     void selectionActionRequested(const QString &action, double start, double end);
@@ -237,5 +253,8 @@ private:
     double m_keptEnd = 0;
     QVariantMap m_converter;
     QString m_totalSizeText;
-    QVariantMap m_tags;
+    QVariantMap m_tags, m_edits;
+    bool m_generating = false;
+    QObject *m_generator = nullptr;
+    void storeChapters(const QVariantList &chapters);
 };

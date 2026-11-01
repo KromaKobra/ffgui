@@ -11,6 +11,7 @@
 #include <QGuiApplication>
 #include <QProcess>
 #include <QTime>
+#include <QTimer>
 #include <QUrl>
 
 namespace {
@@ -18,27 +19,16 @@ constexpr int kMaxLogRows = 5000;
 }
 
 App::App(QQmlEngine *engine, QObject *parent)
-    : QObject(parent)
-    , m_logStore(new ffgui::LogStore(this))
-    , m_covers(std::make_shared<CoverStore>())
-    , m_project(new Project(this))
-    , m_selection(new Selection(this))
-    , m_transport(new Transport(this))
-    , m_meters(new Meters(this))
-    , m_analysis(new Analysis(this))
-    , m_media(new MediaState(m_logStore, this))
-    , m_render(new Render(this))
-    , m_queue(new QueueModel(this))
-    , m_caps(new Capabilities(this))
-    , m_log(new LogModel(this))
-    , m_undo(new Undo(m_project->undoStack(), this))
-    , m_view(new ViewState(this))
-    , m_command(new Command(this))
-    , m_catalog(new CatalogFacade(this))
-    , m_transcript(new TranscriptModel(this))
-    , m_devices(new DevicesModel(this))
-    , m_destinations(new DestinationsModel(this))
-    , m_engine(nullptr)
+    : QObject(parent), m_logStore(new ffgui::LogStore(this)), m_covers(std::make_shared<CoverStore>()),
+      m_project(new Project(this)), m_selection(new Selection(this)), m_transport(new Transport(this)),
+      m_meters(new Meters(this)), m_analysis(new Analysis(this)), m_media(new MediaState(m_logStore, this)),
+      m_render(new Render(this)), m_queue(new QueueModel(this)), m_caps(new Capabilities(this)),
+      m_log(new LogModel(this)), m_undo(new Undo(m_project->undoStack(), this)), m_view(new ViewState(this)),
+      m_command(new Command(this)), m_catalog(new CatalogFacade(this)),
+      m_transcript(new TranscriptDocument(this)), m_devices(new DevicesModel(this)),
+      m_destinations(new DestinationsModel(this)), m_console(new ConsoleSession(m_logStore, this)),
+      m_compare(new CompareState(this)), m_scopes(new ScopeState(this)), m_capture(new CaptureState(this)),
+      m_stream(new StreamState(this)), m_settings(new ToolSettings(this)), m_engine(nullptr)
 {
     if (engine)
         engine->addImageProvider(QStringLiteral("cover"), new CoverProvider(m_covers));
@@ -74,6 +64,17 @@ App::App(QQmlEngine *engine, QObject *parent)
     });
     m_engine = new Engine(this);
     m_engine->start();
+    connect(m_settings, &ToolSettings::changed, this, [this] {
+        if (m_settings->error().isEmpty()) {
+            m_transport->pause();
+            m_caps->refresh();
+        }
+    });
+    connect(m_project, &Project::currentInputChanged, this, [this] {
+        m_transcript->showInput(m_project->uid(m_project->currentInput()));
+        m_compare->cancel();
+    });
+    QTimer::singleShot(0, m_capture, &CaptureState::refreshDevices);
 }
 
 App::~App()
@@ -81,6 +82,16 @@ App::~App()
     // The engine's jobs and threads go before the objects they report to.
     delete m_engine;
     m_engine = nullptr;
+    delete m_stream;
+    m_stream = nullptr;
+    delete m_capture;
+    m_capture = nullptr;
+    delete m_compare;
+    m_compare = nullptr;
+    delete m_console;
+    m_console = nullptr;
+    delete m_transcript;
+    m_transcript = nullptr;
     // These objects own background jobs too. Join them while the log store
     // and other services are still alive, rather than relying on child order.
     delete m_media;
@@ -144,10 +155,7 @@ void App::copyText(const QString &text)
     toast(tr("Copied to clipboard"));
 }
 
-void App::runCommand(const QString &)
-{
-    toast(tr("Running commands from the Console isn't available yet"));
-}
+void App::runCommand(const QString &text) { m_console->run(text); }
 
 void App::openInFfplay()
 {

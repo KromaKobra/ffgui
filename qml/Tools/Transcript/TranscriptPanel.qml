@@ -25,13 +25,22 @@ Item {
         anchors.fill: parent
         spacing: 0
 
+        RowLayout {
+            visible: panel.whisper
+            Layout.fillWidth: true
+            FfTextField { id: whisperModel; Layout.fillWidth: true; placeholderText: qsTr("whisper.cpp model path"); enabled: !App.transcript.active }
+            FfTextField { id: whisperLanguage; Layout.preferredWidth: 65; text: "auto"; enabled: !App.transcript.active }
+            FfButton { text: App.transcript.active ? qsTr("Cancel") : qsTr("Transcribe"); enabled: App.transcript.active || App.project.hasInput; onClicked: App.transcript.active ? App.transcript.cancel() : App.transcript.transcribe(whisperModel.text, whisperLanguage.text) }
+        }
+        Hint { visible: App.transcript.error !== ""; text: App.transcript.error; Layout.fillWidth: true }
+        Caption { text: qsTr("Untimed TXT lines get five seconds each. Edit the times after import."); Layout.fillWidth: true }
         EmptyState {
             visible: App.transcript.count === 0
             Layout.fillWidth: true
             Layout.fillHeight: true
             glyph: "✎"
             title: qsTr("No transcript for this input yet")
-            text: panel.whisper ? qsTr("Add Speech › Transcribe to the Chain, or import an SRT, TXT or JSON transcript.")
+            text: panel.whisper ? qsTr("Choose a whisper.cpp model above, or import an SRT, TXT or JSON transcript.")
                                 : qsTr("This FFmpeg build has no whisper filter, so it can't transcribe. You can still import an SRT, TXT or JSON transcript and edit it here.")
             actionText: qsTr("Import…")
             onAction: App.requestDialog("importTranscript")
@@ -53,9 +62,10 @@ Item {
                 id: line
                 required property int index
                 required property real start
+                required property real end
                 required property string text
                 width: ListView.view.width
-                height: body.implicitHeight + 10
+                height: body.implicitHeight + 44
                 RowLayout {
                     anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
                     spacing: Metrics.margin
@@ -65,22 +75,33 @@ Item {
                         font.family: Metrics.monoFamily
                         font.pixelSize: Metrics.fontSmall
                         Layout.alignment: Qt.AlignTop
+                        TapHandler { onTapped: App.transport.seek(line.start) }
                     }
-                    Text {
-                        id: body
-                        text: line.text
-                        color: line.index === panel.current ? Theme.textBright : Theme.textSoft
-                        font.pixelSize: Metrics.fontBody
-                        wrapMode: Text.Wrap
+                    ColumnLayout {
                         Layout.fillWidth: true
+                        RowLayout {
+                            TimeField { Layout.preferredWidth: 95; seconds: line.start; display: Format.timecode(seconds, true); onEdited: v => App.transcript.setSegment(line.index, v, line.end, line.text) }
+                            TimeField { Layout.preferredWidth: 95; seconds: line.end; display: Format.timecode(seconds, true); onEdited: v => App.transcript.setSegment(line.index, line.start, v, line.text) }
+                            FfToolButton { text: Glyphs.remove; onClicked: App.transcript.removeSegment(line.index) }
+                        }
+                        FfTextArea {
+                            id: body
+                            Layout.fillWidth: true
+                            text: line.text
+                            color: line.index === panel.current ? Theme.textBright : Theme.textSoft
+                            font.pixelSize: Metrics.fontBody
+                            wrapMode: TextEdit.Wrap
+                            onActiveFocusChanged: if (!activeFocus && text !== line.text) App.transcript.setSegment(line.index, line.start, line.end, text)
+                        }
                     }
                 }
-                TapHandler { onTapped: App.transport.seek(line.start) }
+
             }
         }
 
         ButtonRow {
-            visible: App.transcript.count > 0
+            FfButton { text: qsTr("Add line"); font.pixelSize: Metrics.fontCaption; onClicked: App.transcript.addSegment(App.transport.position, App.transport.position + 5, "") }
+            FfButton { text: qsTr("Import…"); font.pixelSize: Metrics.fontCaption; onClicked: App.requestDialog("importTranscript") }
             FfButton { text: qsTr("Export SRT…"); font.pixelSize: Metrics.fontCaption; onClicked: App.requestDialog("exportTranscript", { format: "srt" }) }
             FfButton { text: "TXT…"; font.pixelSize: Metrics.fontCaption; onClicked: App.requestDialog("exportTranscript", { format: "txt" }) }
             FfButton { text: "JSON…"; font.pixelSize: Metrics.fontCaption; onClicked: App.requestDialog("exportTranscript", { format: "json" }) }

@@ -10,7 +10,7 @@
 InputsModel::InputsModel(QObject *parent)
     : RowModel({ "uid", "name", "path", "kind", "container", "formatName", "formatLong", "duration",
                  "size", "bitrate", "cover", "health", "healthText", "tracks", "chapters", "tags",
-                 "count", "probing" }, parent)
+                 "count", "probing", "lavfi" }, parent)
 {
 }
 
@@ -79,7 +79,7 @@ DevicesModel::DevicesModel(QObject *parent)
 }
 
 DestinationsModel::DestinationsModel(QObject *parent)
-    : RowModel({ "uid", "name", "url", "protocol", "format", "status", "bitrate" }, parent)
+    : RowModel({ "uid", "name", "url", "protocol", "format", "status", "bitrate", "kbps", "history", "error" }, parent)
 {
 }
 

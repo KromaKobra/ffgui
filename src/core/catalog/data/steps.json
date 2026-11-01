@@ -217,7 +217,7 @@
           ] },
         { "key": "transcribe", "name": "Transcribe", "category": "Speech", "glyph": "✎", "blurb": "Speech to text, kept in sync",
           "requires": ["whisper"], "library": "whisper", "builder": "transcribe",
-          "template": "whisper=model={model}:destination={destination}:format=srt",
+          "template": "whisper=model={model}:format=srt",
           "keywords": ["whisper", "transcript", "subtitles", "speech to text", "srt"],
           "common": [
               { "key": "model", "label": "Model file", "type": "string", "default": "" }

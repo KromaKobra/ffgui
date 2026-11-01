@@ -14,7 +14,7 @@ Item {
     readonly property var tags: App.project.tags
     readonly property var common: ["title", "artist", "album", "date", "genre", "comment"]
     readonly property var custom: Object.keys(panel.tags).filter(k => panel.common.indexOf(k) < 0)
-    readonly property var chapters: App.project.input.chapters || []
+    readonly property var chapters: App.project.chapters
 
     EmptyState {
         anchors.fill: parent
@@ -50,6 +50,7 @@ Item {
                             placeholderText: "—"
                             onEditingFinished: if (text !== (panel.tags[tagRow.modelData] || "")) App.project.setTag(tagRow.modelData, text)
                         }
+                        FfToolButton { text: Glyphs.remove; tip: qsTr("Remove tag"); onClicked: App.project.removeTag(tagRow.modelData) }
                     }
                 }
                 RowLayout {
@@ -78,7 +79,7 @@ Item {
                         y: 10
                         width: 76
                         height: 76
-                        source: App.project.input.cover || ""
+                        source: App.project.cover
                         fillMode: Image.PreserveAspectFit
                         asynchronous: true
                     }
@@ -96,7 +97,7 @@ Item {
                 RowLayout {
                     FfButton { text: qsTr("Extract…"); enabled: cover.status === Image.Ready; onClicked: App.requestDialog("extractCover") }
                     FfButton { text: qsTr("Replace…"); onClicked: App.requestDialog("replaceCover") }
-                    FfButton { text: qsTr("Remove"); enabled: cover.status === Image.Ready; onClicked: App.project.setTag("__cover", "") }
+                    FfButton { text: qsTr("Remove"); enabled: cover.status === Image.Ready; onClicked: App.project.removeCover() }
                 }
             }
 
@@ -107,18 +108,46 @@ Item {
                     delegate: RowLayout {
                         id: chapterRow
                         required property var modelData
+                        required property int index
                         Layout.fillWidth: true
-                        Label {
-                            text: Format.timecode(chapterRow.modelData.start)
-                            font.family: Metrics.monoFamily
-                            font.pixelSize: Metrics.fontCaption
-                            opacity: 0.7
-                            TapHandler { onTapped: App.transport.seek(chapterRow.modelData.start) }
+                        TimeField {
+                            seconds: chapterRow.modelData.start
+                            display: Format.timecode(seconds, true)
+                            Layout.preferredWidth: 100
+                            onEdited: v => App.project.setChapter(chapterRow.index, v, chapterRow.modelData.end, chapterRow.modelData.title || "")
                         }
-                        FfTextField { Layout.fillWidth: true; text: chapterRow.modelData.title || "" }
+                        TimeField {
+                            seconds: chapterRow.modelData.end
+                            display: Format.timecode(seconds, true)
+                            Layout.preferredWidth: 100
+                            onEdited: v => App.project.setChapter(chapterRow.index, chapterRow.modelData.start, v, chapterRow.modelData.title || "")
+                        }
+                        FfTextField {
+                            Layout.fillWidth: true
+                            text: chapterRow.modelData.title || ""
+                            onEditingFinished: App.project.setChapter(chapterRow.index, chapterRow.modelData.start, chapterRow.modelData.end, text)
+                        }
+                        FfToolButton { text: Glyphs.remove; onClicked: App.project.removeChapter(chapterRow.index) }
                     }
                 }
+                FfButton { text: qsTr("Add chapter at playhead"); onClicked: App.project.addChapter(App.transport.position, Math.max(App.transport.position + 0.1, App.project.duration), qsTr("Chapter")) }
                 Hint { visible: panel.chapters.length === 0; text: qsTr("No chapters. Add markers in the Media View to create them.") }
+            }
+            Section {
+                title: qsTr("Track metadata")
+                Repeater {
+                    model: App.project.editableTracks
+                    delegate: ColumnLayout {
+                        id: trackEntry
+                        required property var modelData
+                        Layout.fillWidth: true
+                        Caption { text: qsTr("Audio track %1").arg(trackEntry.modelData.audioIndex + 1) }
+                        FfTextField { Layout.fillWidth: true; placeholderText: qsTr("Title"); text: trackEntry.modelData.title || ""; onEditingFinished: App.project.setTrackMetadata(trackEntry.modelData.audioIndex, { title: text }) }
+                        FfTextField { Layout.fillWidth: true; placeholderText: qsTr("Language, e.g. eng"); text: trackEntry.modelData.lang || ""; onEditingFinished: App.project.setTrackMetadata(trackEntry.modelData.audioIndex, { lang: text }) }
+                        FfCheckBox { text: qsTr("Default track"); checked: !!trackEntry.modelData.isDefault; onToggled: App.project.setTrackMetadata(trackEntry.modelData.audioIndex, { isDefault: checked }) }
+                    }
+                }
+                Hint { text: qsTr("Choose Edit in an output's metadata policy to write these changes.") }
             }
         }
     }

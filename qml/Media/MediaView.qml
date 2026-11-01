@@ -214,7 +214,7 @@ Item {
             unit: view.rulerUnit
             sampleRate: view.sampleRate
             bpm: view.bpm
-            chapters: App.project.input.chapters || []
+            chapters: App.project.chapters
             showChapters: view.layers.chapters === true
         }
 

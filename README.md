@@ -31,8 +31,16 @@ format, command preview and negotiated converters drive real renders, selection
 exports and a batch queue with pause, retry and reordering. Projects save as
 `.ffgui` recipes; user output and chain presets can be saved, imported and exported.
 
-Phase 3 (the remaining tool panels) is next. Playback has been tested silently;
-a listening check on your audio device is still pending.
+Phase 3 adds editable tags, cover art, chapters and track metadata; an executable
+Console; aligned comparison with scores and PCM checksums; six audio scopes;
+channel routing; capture devices and recording; generated sources; independent
+stream destinations; transcript editing/import/export and a gated Whisper runner;
+and FFmpeg tool settings. Metadata edits use the output's Edit policy.
+
+Phase 4 (branching graphs and multiple inputs) is next. Playback has been tested
+silently; a listening check on your audio device is still pending. Recording tests
+use synthetic inputs, streaming tests use local HLS, and Whisper transcription
+requires a build with that filter plus a local whisper.cpp model.
 
 ## Build and run
 
@@ -72,7 +80,8 @@ ffmpeg` leaves them out.
 ```
 src/core/          ffgui_core: pure C++. tools/ (running ffmpeg), caps/, probe/,
                    media/ (decoding, peak pyramid, spectrogram), analysis/,
-                   dsp/ (loudness), playback/, metadata/, catalog/, log/,
+                   dsp/ (loudness and scopes), playback/, metadata/, catalog/, log/,
+                   capture/, compare/, transcript/,
                    project/ (recipes and undo snapshots), command/, render/
 src/backend/       FFgui.Backend: the App singleton, the Engine that runs the
                    jobs, and the models and scene items QML binds to

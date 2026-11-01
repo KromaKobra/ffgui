@@ -1,6 +1,12 @@
 # ffgui_core: the pure C++ side (QtCore/Gui/Multimedia), no QML. Each folder
 # is small and has its own unit tests under tests/core.
 qt_add_library(ffgui_core STATIC
+    tools/CommandLine.cpp tools/CommandLine.h
+    transcript/Transcript.cpp transcript/Transcript.h
+    metadata/Metadata.cpp metadata/Metadata.h
+    dsp/Scopes.cpp dsp/Scopes.h
+    capture/Capture.cpp capture/Capture.h
+    compare/Comparer.cpp compare/Comparer.h
     project/Recipe.cpp project/Recipe.h project/SnapshotCommand.h
     command/CommandBuilder.cpp command/CommandBuilder.h
     command/GraphProbe.cpp command/GraphProbe.h
@@ -36,7 +42,7 @@ target_include_directories(ffgui_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 # The per-sample DSP is ~20x slower unoptimized; keep it fast in Debug too.
 set_source_files_properties(
-    media/Fft.cpp media/PeakPyramid.cpp media/Spectrogram.cpp media/MediaData.cpp dsp/LoudnessMeter.cpp
+    media/Fft.cpp media/PeakPyramid.cpp media/Spectrogram.cpp media/MediaData.cpp dsp/LoudnessMeter.cpp dsp/Scopes.cpp
     PROPERTIES COMPILE_OPTIONS "$<$<CONFIG:Debug>:-O2>")
 target_link_libraries(ffgui_core PUBLIC Qt6::Core Qt6::Gui Qt6::Multimedia)
 

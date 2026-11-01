@@ -1,8 +1,8 @@
 #pragma once
 
 #include "Analysis.h"
-#include "CatalogFacade.h"
 #include "Capabilities.h"
+#include "CatalogFacade.h"
 #include "Command.h"
 #include "MediaState.h"
 #include "Meters.h"
@@ -10,6 +10,7 @@
 #include "Project.h"
 #include "Render.h"
 #include "Selection.h"
+#include "Tools.h"
 #include "Transport.h"
 #include "Undo.h"
 #include "ViewState.h"
@@ -46,9 +47,16 @@ class App : public QObject
     Q_PROPERTY(ViewState *view READ view CONSTANT)
     Q_PROPERTY(Command *command READ command CONSTANT)
     Q_PROPERTY(CatalogFacade *catalog READ catalog CONSTANT)
-    Q_PROPERTY(TranscriptModel *transcript READ transcript CONSTANT)
+    Q_PROPERTY(TranscriptDocument *transcript READ transcript CONSTANT)
     Q_PROPERTY(DevicesModel *devices READ devices CONSTANT)
     Q_PROPERTY(DestinationsModel *destinations READ destinations CONSTANT)
+
+    Q_PROPERTY(ConsoleSession *console READ console CONSTANT)
+    Q_PROPERTY(CompareState *compare READ compare CONSTANT)
+    Q_PROPERTY(ScopeState *scopes READ scopes CONSTANT)
+    Q_PROPERTY(CaptureState *capture READ capture CONSTANT)
+    Q_PROPERTY(StreamState *stream READ stream CONSTANT)
+    Q_PROPERTY(ToolSettings *settings READ settings CONSTANT)
 
     Q_PROPERTY(int queuePending READ queuePending NOTIFY queuePendingChanged)
     Q_PROPERTY(int warningCount READ warningCount NOTIFY logCountsChanged)
@@ -78,10 +86,16 @@ public:
     ViewState *view() const { return m_view; }
     Command *command() const { return m_command; }
     CatalogFacade *catalog() const { return m_catalog; }
-    TranscriptModel *transcript() const { return m_transcript; }
+    TranscriptDocument *transcript() const { return m_transcript; }
     DevicesModel *devices() const { return m_devices; }
     DestinationsModel *destinations() const { return m_destinations; }
 
+    ConsoleSession *console() const { return m_console; }
+    CompareState *compare() const { return m_compare; }
+    ScopeState *scopes() const { return m_scopes; }
+    CaptureState *capture() const { return m_capture; }
+    StreamState *stream() const { return m_stream; }
+    ToolSettings *settings() const { return m_settings; }
     int queuePending() const;
     int warningCount() const { return m_warningCount; }
     int errorCount() const { return m_errorCount; }
@@ -138,9 +152,15 @@ private:
     ViewState *m_view;
     Command *m_command;
     CatalogFacade *m_catalog;
-    TranscriptModel *m_transcript;
+    TranscriptDocument *m_transcript;
     DevicesModel *m_devices;
     DestinationsModel *m_destinations;
+    ConsoleSession *m_console;
+    CompareState *m_compare;
+    ScopeState *m_scopes;
+    CaptureState *m_capture;
+    StreamState *m_stream;
+    ToolSettings *m_settings;
     Engine *m_engine;
     int m_warningCount = 0;
     int m_errorCount = 0;

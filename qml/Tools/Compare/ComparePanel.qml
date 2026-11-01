@@ -4,85 +4,78 @@ import QtQuick.Layouts
 import FFgui.Backend
 import FFgui.Controls
 import FFgui.Theme
-
-// Compare: Original vs Processed, or two inputs, side by side: aligned
-// waveforms, the difference, an offset finder and similarity scores.
 Item {
     id: panel
-
-    property int mode: 0        // 0 = original vs processed, 1 = two inputs
-    readonly property bool possible: panel.mode === 0 ? App.project.activeSteps > 0 : App.project.inputs.count > 1
-
-    component Trace: Item {
+    property int mode: 0
+    property int a: 0
+    property int b: 1
+    readonly property var result: App.compare.result
+    function score(key) {
+        const value = panel.result[key];
+        return value === undefined ? "—" : value === Infinity ? "+∞ dB" : value === -Infinity ? "−∞ dB" : Format.number(value, 2) + " dB";
+    }
+    component Trace: ColumnLayout {
         id: trace
-        property string label
+        property string title
+        property var samples: []
         property color tone: Theme.wavePeak
-        property alias content: holder.data
-        Text { text: trace.label; color: Theme.textDim; font.pixelSize: Metrics.fontSmall }
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        Caption { text: trace.title }
         Rectangle {
-            id: holder
-            anchors { fill: parent; topMargin: 14 }
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.minimumHeight: 8
             color: Theme.well
-            radius: Metrics.radiusSmall
+            ToolPlot { anchors.fill: parent; values: trace.samples; kind: "waveform"; tone: trace.tone; gridColor: Theme.line }
         }
     }
-
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: Metrics.spacingLarge
-        spacing: Metrics.spacing
-
         RowLayout {
-            Layout.fillWidth: true
-            FfComboBox {
-                Layout.preferredWidth: 240
-                model: [qsTr("Original vs Processed"), qsTr("Two inputs")]
-                currentIndex: panel.mode
-                onActivated: index => panel.mode = index
-            }
-            Item { Layout.fillWidth: true }
-            Caption { text: qsTr("Offset: %1").arg("—") }
-            FfButton {
-                text: qsTr("Find offset")
-                font.pixelSize: Metrics.fontCaption
-                enabled: panel.possible
-            }
+            FfComboBox { model: [qsTr("Original vs Processed"), qsTr("Two inputs")]; currentIndex: panel.mode; onActivated: index => { panel.mode = index; App.compare.cancel(); } }
+            FfButton { text: App.compare.active ? qsTr("Cancel") : qsTr("Compare"); enabled: App.project.hasInput; onClicked: App.compare.active ? App.compare.cancel() : App.compare.run(panel.mode, panel.mode === 0 ? -1 : panel.a, panel.b) }
+            FfButton { text: qsTr("Find offset"); enabled: !App.compare.active && panel.result.suggestedOffset !== undefined; onClicked: App.compare.findOffset() }
         }
-
+        RowLayout {
+            visible: panel.mode === 1
+            Caption { text: "A" }
+            FfComboBox { Layout.fillWidth: true; model: App.project.inputs; textRole: "name"; currentIndex: panel.a; onActivated: index => panel.a = index }
+            Caption { text: "B" }
+            FfComboBox { Layout.fillWidth: true; model: App.project.inputs; textRole: "name"; currentIndex: panel.b; onActivated: index => panel.b = index }
+        }
+        RowLayout {
+            Caption { text: qsTr("B offset (seconds)") }
+            NumberField { value: App.compare.offset; from: -3600; to: 3600; decimals: 3; Layout.preferredWidth: 100; onEdited: v => App.compare.offset = v }
+            Caption { text: panel.result.confidence !== undefined ? qsTr("Alignment confidence %1%").arg(Math.round(panel.result.confidence * 100)) : "" }
+        }
+        Hint { visible: App.compare.error !== ""; text: App.compare.error }
         EmptyState {
-            visible: !panel.possible
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            title: panel.mode === 0 ? qsTr("Nothing to compare yet") : qsTr("Add a second input")
-            text: panel.mode === 0 ? qsTr("Add a step to the chain: Compare then shows what it changes.")
-                                   : qsTr("Two inputs are compared aligned, with an offset finder and SDR / PSNR scores.")
+            visible: !App.compare.active && panel.result.traceA === undefined && App.compare.error === ""
+            Layout.fillWidth: true; Layout.fillHeight: true
+            title: qsTr("Choose what to compare")
+            text: qsTr("Compare the current input with its processing chain, or choose two inputs.")
         }
-
+        Caption { visible: App.compare.active; text: qsTr("Decoding and measuring…") }
         RowLayout {
-            visible: panel.possible
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            spacing: Metrics.spacingWide
-
+            visible: panel.result.traceA !== undefined
+            Layout.fillWidth: true; Layout.fillHeight: true
             ColumnLayout {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                spacing: Metrics.spacingSmall
-                Trace { label: panel.mode === 0 ? qsTr("A · Original") : qsTr("A"); Layout.fillWidth: true; Layout.fillHeight: true }
-                Trace { label: panel.mode === 0 ? qsTr("B · Processed") : qsTr("B"); Layout.fillWidth: true; Layout.fillHeight: true }
-                Trace { label: qsTr("Difference"); tone: Theme.warn; Layout.fillWidth: true; Layout.preferredHeight: 34 }
+                Layout.fillWidth: true; Layout.fillHeight: true
+                Trace { title: qsTr("A · Original / first input"); samples: panel.result.traceA || [] }
+                Trace { title: qsTr("B · Processed / second input"); samples: panel.result.traceB || [] }
+                Trace { title: qsTr("Difference"); tone: Theme.warn; samples: panel.result.difference || [] }
             }
-
             ColumnLayout {
-                Layout.fillWidth: false
-                Layout.preferredWidth: 190
                 Layout.alignment: Qt.AlignTop
-                spacing: Metrics.spacingTight
-                Prop { key: "SDR"; value: "—" }
-                Prop { key: "PSNR"; value: "—" }
-                Prop { key: qsTr("Peak change"); value: "—" }
-                Prop { key: qsTr("Checksum"); value: "—" }
+                Layout.preferredWidth: 170
+                Prop { key: "SDR"; value: panel.score("sdr") }
+                Prop { key: "PSNR"; value: panel.score("psnr") }
+                Prop { key: qsTr("Peak change"); value: panel.result.peakChange !== undefined ? Format.signedNumber(panel.result.peakChange) + " dB" : "—" }
+                Prop { key: qsTr("PCM checksum"); value: panel.result.equal === undefined ? "—" : panel.result.equal ? qsTr("Identical") : qsTr("Different") }
             }
         }
+        Hint { text: qsTr("Scores measure the overlap at 48 kHz stereo; PCM checksums cover each aligned stream. Traces show the first 30 seconds; offset search uses the envelope within ±2 seconds.") }
     }
 }

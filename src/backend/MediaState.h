@@ -54,6 +54,7 @@ public:
 
     std::shared_ptr<ffgui::MediaData> data() const { return m_data; }
     QString key() const { return m_key; }
+    const ffgui::PcmReader::Source &source() const { return m_source; }
 
     // Shows (decoding if needed) one track. `key` identifies input + track.
     void show(const QString &key, const ffgui::PcmReader::Source &source);

@@ -19,8 +19,6 @@ DropArea {
         const z = [{ id: "add", title: qsTr("Add as input"), text: drop.urls.length === 1 ? qsTr("1 file") : qsTr("%1 files").arg(drop.urls.length) }];
         if (App.project.hasInput && drop.urls.length === 1)
             z.push({ id: "replace", title: qsTr("Replace input"), text: qsTr("Keep the chain and outputs, swap %1").arg(App.project.input.name) });
-        if (App.project.hasInput && drop.urls.length === 1)
-            z.push({ id: "ir", title: qsTr("Use as impulse response"), text: qsTr("Convolve the chain with this file") });
         return z;
     }
     property string hovered: "add"

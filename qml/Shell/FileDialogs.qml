@@ -37,6 +37,11 @@ Item {
             case "importPresets": importPresets.open(); break;
             case "exportPresets": exportPresets.open(); break;
             case "replaceCover": replaceCover.open(); break;
+            case "extractCover": extractCover.open(); break;
+            case "recordingFile": recordingFile.defaultSuffix = options.extension || "wav"; recordingFile.open(); break;
+            case "importTranscript": importTranscript.open(); break;
+            case "exportTranscript": exportTranscript.defaultSuffix = options.format || "srt"; exportTranscript.open(); break;
+            case "settings": settings.open(); break;
             default:
                 App.toast(qsTr("That isn't available yet"));
             }
@@ -117,6 +122,53 @@ Item {
         ColumnLayout {
             FfTextField { id: presetName; placeholderText: qsTr("Preset name"); Layout.fillWidth: true }
             FfComboBox { id: presetKind; model: [qsTr("Current output"), qsTr("Processing chain")]; Layout.fillWidth: true }
+        }
+    }
+
+    FileDialog {
+        id: extractCover
+        title: qsTr("Extract cover art")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "png"
+        nameFilters: [qsTr("PNG (*.png)"), qsTr("JPEG (*.jpg)")]
+        onAccepted: App.project.extractCover(selectedFile)
+    }
+    FileDialog {
+        id: recordingFile
+        title: qsTr("Save recording")
+        fileMode: FileDialog.SaveFile
+        nameFilters: [qsTr("Audio (*.wav *.flac)")]
+        onAccepted: App.capture.output = selectedFile.toString()
+    }
+    FileDialog {
+        id: importTranscript
+        title: qsTr("Import transcript")
+        nameFilters: [qsTr("Transcripts (*.srt *.txt *.json)")]
+        onAccepted: if (!App.transcript.importFile(selectedFile)) App.toast(App.transcript.error, "error")
+    }
+    FileDialog {
+        id: exportTranscript
+        title: qsTr("Export transcript")
+        fileMode: FileDialog.SaveFile
+        nameFilters: [qsTr("Transcripts (*.srt *.txt *.json)")]
+        onAccepted: App.toast(App.transcript.exportFile(selectedFile, dialogs.pending.format || "srt") ? qsTr("Transcript exported") : qsTr("Couldn't write transcript"))
+    }
+    Dialog {
+        id: settings
+        title: qsTr("FFmpeg tools")
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: 520
+        modal: true
+        standardButtons: Dialog.Save | Dialog.Cancel
+        onOpened: { ffmpegPath.text = App.settings.ffmpeg; ffprobePath.text = App.settings.ffprobe; ffplayPath.text = App.settings.ffplay; }
+        onAccepted: if (!App.settings.save(ffmpegPath.text.trim(), ffprobePath.text.trim(), ffplayPath.text.trim())) { App.toast(App.settings.error, "error"); settings.open(); }
+        ColumnLayout {
+            anchors.fill: parent
+            Hint { text: qsTr("Leave a path empty to find that tool automatically.") }
+            FormRow { label: "ffmpeg"; FfTextField { id: ffmpegPath; Layout.fillWidth: true; mono: true; placeholderText: qsTr("Automatic") } }
+            FormRow { label: "ffprobe"; FfTextField { id: ffprobePath; Layout.fillWidth: true; mono: true; placeholderText: qsTr("Automatic") } }
+            FormRow { label: "ffplay"; FfTextField { id: ffplayPath; Layout.fillWidth: true; mono: true; placeholderText: qsTr("Automatic") } }
         }
     }
 

@@ -1,12 +1,15 @@
 #include "CommandBuilder.h"
-#include <tools/FfTools.h>
-#include <tools/ShellQuote.h>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFileInfo>
 #include <QRegularExpression>
+#include <QSaveFile>
 #include <QStandardPaths>
 #include <QUrl>
 #include <cmath>
+#include <metadata/Metadata.h>
+#include <tools/FfTools.h>
+#include <tools/ShellQuote.h>
 
 namespace ffgui
 {
@@ -301,6 +304,27 @@ QString CommandBuilder::outputPath(const QString &input, const QVariantMap &outp
         .absoluteFilePath(pattern + u'.' + (container ? container->extension : QStringLiteral("wav")));
 }
 
+bool BuiltCommand::prepare(QString *error) const
+{
+    for (auto it = sidecars.begin(); it != sidecars.end(); ++it) {
+        if (QFileInfo::exists(it.key()))
+            continue;
+        if (!QDir().mkpath(QFileInfo(it.key()).absolutePath())) {
+            if (error)
+                *error = QStringLiteral("Couldn't create metadata cache");
+            return false;
+        }
+        QSaveFile file(it.key());
+        if (!file.open(QIODevice::WriteOnly) || file.write(it.value()) != it.value().size() ||
+            !file.commit()) {
+            if (error)
+                *error = file.errorString();
+            return false;
+        }
+    }
+    return true;
+}
+
 BuiltCommand CommandBuilder::build(const QString &input, int audioIndex, const QVariantMap &track, double duration,
                                    const QList<QVariantMap> &nodes, const QList<QVariantMap> &outputs,
                                    const Catalog &catalog, const BuildInfo &caps, double selectionStart,
@@ -319,6 +343,31 @@ BuiltCommand CommandBuilder::build(const QString &input, int audioIndex, const Q
     result.groups << shellQuote(FfTools::paths().ffmpeg.isEmpty() ? QStringLiteral("ffmpeg") : FfTools::paths().ffmpeg);
     group({"-hide_banner", "-loglevel", "level+info", "-n", "-progress", "pipe:1", "-nostats"});
     group({"-i", input});
+    const auto edits = track.value(QStringLiteral("metadataEdits")).toMap();
+    int metadataInput = -1, coverInput = -1, nextInput = 1;
+    bool editing = false;
+    for (const auto &out : outputs)
+        editing |= out.value(QStringLiteral("metadata")).toString() == u"edit";
+    auto sidecar = [&](const QByteArray &bytes, const QString &suffix) {
+        const QString path =
+            QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QStringLiteral("/metadata/") +
+            QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex()) + suffix;
+        result.sidecars.insert(path, bytes);
+        return path;
+    };
+    if (editing && !edits.isEmpty()) {
+        const auto bytes = ffmetadata(edits.value(QStringLiteral("tags")).toMap(),
+                                      edits.value(QStringLiteral("chapters")).toList());
+        metadataInput = nextInput++;
+        group({"-f", "ffmetadata", "-i", sidecar(bytes, QStringLiteral(".ffmeta"))});
+        if (edits.value(QStringLiteral("coverAction")).toString() == u"replace") {
+            coverInput = nextInput++;
+            group({"-i", sidecar(QByteArray::fromBase64(
+                                     edits.value(QStringLiteral("coverData")).toString().toLatin1()),
+                                 QStringLiteral(".png"))});
+        }
+    }
+
     const auto chain = ChainCompiler::compile(nodes, catalog, caps, track.value(QStringLiteral("channels"), 2).toInt());
     if (!chain.error.isEmpty()) {
         result.error = chain.error;
@@ -426,10 +475,35 @@ BuiltCommand CommandBuilder::build(const QString &input, int audioIndex, const Q
             }
         }
         const bool strip = out.value(QStringLiteral("metadata")).toString() == u"strip";
+        const bool edit = out.value(QStringLiteral("metadata")).toString() == u"edit";
         const int cover = track.value(QStringLiteral("coverStream"), -1).toInt();
-        if (!strip && cover >= 0 && QStringList { "mp3", "flac", "ipod", "mp4", "mov" }.contains(container->muxer))
-            group({ "-map", QStringLiteral("0:%1").arg(cover), "-c:v", "copy", "-disposition:v", "attached_pic" });
-        group({"-map_metadata", strip ? "-1" : "0", "-map_chapters", strip ? "-1" : "0"});
+        const QString coverAction = edits.value(QStringLiteral("coverAction")).toString();
+        if (!strip && !(edit && coverAction == u"remove") &&
+            QStringList{"mp3", "flac", "ipod", "mp4", "mov"}.contains(container->muxer)) {
+            if (edit && coverAction == u"replace" && coverInput >= 0)
+                group({"-map", QString::number(coverInput) + ":v:0", "-c:v", "copy", "-disposition:v",
+                       "attached_pic"});
+            else if (cover >= 0)
+                group({"-map", QStringLiteral("0:%1").arg(cover), "-c:v", "copy", "-disposition:v",
+                       "attached_pic"});
+        }
+        const QString meta = strip                        ? QStringLiteral("-1")
+                             : edit && metadataInput >= 0 ? QString::number(metadataInput)
+                                                          : QStringLiteral("0");
+        group({"-map_metadata", meta, "-map_chapters", meta});
+        if (edit) {
+            const auto changes =
+                edits.value(QStringLiteral("tracks")).toMap().value(QString::number(audioIndex)).toMap();
+            if (changes.contains(QStringLiteral("title")))
+                group({"-metadata:s:a:0",
+                       QStringLiteral("title=") + changes.value(QStringLiteral("title")).toString()});
+            if (changes.contains(QStringLiteral("lang")))
+                group({"-metadata:s:a:0",
+                       QStringLiteral("language=") + changes.value(QStringLiteral("lang")).toString()});
+            if (changes.contains(QStringLiteral("isDefault")))
+                group({"-disposition:a:0",
+                       changes.value(QStringLiteral("isDefault")).toBool() ? "default" : "0"});
+        }
         for (const auto &key : {QStringLiteral("encoderOptions"), QStringLiteral("muxerOptions")}) {
             const auto opts = out.value(key).toMap();
             for (auto it = opts.begin(); it != opts.end(); ++it)

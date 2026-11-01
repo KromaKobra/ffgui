@@ -29,6 +29,7 @@ Item {
     function gain(r, c) { return panel.gains[r] ? (panel.gains[r][c] || 0) : 0; }
     function setGain(r, c, v) {
         const g = panel.gains.map(row => row.slice());
+        if (!g[r] || c < 0) return;
         g[r][c] = v;
         panel.gains = g;
     }
@@ -110,14 +111,12 @@ Item {
                         radius: Metrics.radius
                         color: cell.gain ? Theme.accentFill : Theme.row
                         border.color: Theme.border
-                        Text {
-                            anchors.centerIn: parent
-                            text: cell.gain ? cell.gain.toFixed(2) : "·"
-                            color: Theme.text
-                            font.pixelSize: Metrics.fontCaption
-                            font.family: Metrics.monoFamily
+                        NumberField {
+                            anchors.fill: parent
+                            value: cell.gain
+                            from: -4; to: 4; decimals: 3
+                            onEdited: v => panel.setGain(cell.row, cell.col, v)
                         }
-                        TapHandler { onTapped: panel.setGain(cell.row, cell.col, cell.gain ? 0 : 1) }
                     }
                 }
             }

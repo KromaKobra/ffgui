@@ -15,6 +15,7 @@
 #include <memory>
 
 class App;
+class MediaState;
 
 // Everything that runs ffmpeg for the input on screen, behind App: decoding
 // for the Media View, the analysis pass and selection stats, playback with
@@ -60,6 +61,10 @@ private:
     void tick();
     void scheduleIdleMeters();
     void idleMeters();
+    void idleScopes(MediaState *media);
+    QPointer<ffgui::ProcessJob> m_scopeJob;
+    QString m_scopeKey;
+    qint64 m_scopeFrame = -1;
 
     App *m_app;
     ffgui::PlaybackEngine m_player;

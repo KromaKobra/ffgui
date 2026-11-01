@@ -103,6 +103,8 @@ ToolBar {
             onClicked: App.undo.redo()
         }
 
+        FfToolButton { text: Glyphs.more; tip: qsTr("FFmpeg tool settings"); onClicked: App.requestDialog("settings") }
+
         MenuButton {
             text: qsTr("Panels") + " " + Glyphs.open
             alignRight: true

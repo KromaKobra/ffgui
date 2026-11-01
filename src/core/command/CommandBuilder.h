@@ -44,6 +44,8 @@ struct BuiltCommand {
     QStringList args, groups, paths;
     QString error;
     double duration = 0;
+    QMap<QString, QByteArray> sidecars;
+    bool prepare(QString *error = nullptr) const;
 };
 class CommandBuilder
 {

@@ -20,3 +20,4 @@ ffgui_add_test(tst_dsp LIBRARIES ffgui_core)
 ffgui_add_test(tst_models LIBRARIES ffgui_backend)
 
 ffgui_add_test(tst_delivery LIBRARIES ffgui_backend)
+ffgui_add_test(tst_tooling LIBRARIES ffgui_backend)

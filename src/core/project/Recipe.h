@@ -10,7 +10,7 @@ namespace ffgui
 struct Recipe {
     QString name = QStringLiteral("Untitled project");
     QList<QVariantMap> inputs, nodes, links, outputs, markers;
-    QVariantMap metadata;
+    QVariantMap metadata, edits;
 };
 
 class RecipeJson

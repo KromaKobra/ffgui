@@ -29,6 +29,13 @@ TestCase {
             App.view.setLayer("processed", true);
             tryVerify(() => App.media.processed.ready && !App.media.processed.loading && App.project.graph.count > 0, 20000);
             App.selection.select("step", { index: 0 });
+            App.project.setTag("artist", "ffgui fixture");
+            App.transcript.addSegment(0, 1.5, "Tone at 1 kHz");
+            App.transcript.addSegment(1.5, 4, "Silence");
+            App.compare.run();
+            tryVerify(() => !App.compare.active, 20000);
+            verify(App.compare.error === "");
+            App.stream.add("Local HLS", "hls", testEnv.tempDir + "/preview.m3u8", 128);
         }
     }
 

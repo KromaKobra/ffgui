@@ -31,6 +31,8 @@ void RenderJob::start()
         emit finished(false, false, m_command.error);
         return;
     }
+    QString error;
+    if(!m_command.prepare(&error)){emit finished(false,false,error);return;}
     m_job.start();
 }
 void RenderJob::stop() { m_job.stop(); }
