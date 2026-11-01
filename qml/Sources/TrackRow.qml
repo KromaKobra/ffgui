@@ -18,6 +18,7 @@ SelectableRow {
               && App.selection.track === row.trackIndex
     onClicked: {
         App.project.currentInput = row.inputIndex;
+        App.project.currentTrack = row.trackIndex;
         App.selection.select("track", { index: row.inputIndex, track: row.trackIndex });
     }
 

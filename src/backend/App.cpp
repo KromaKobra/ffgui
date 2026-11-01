@@ -1,4 +1,8 @@
 #include "App.h"
+#include "CoverStore.h"
+#include "Engine.h"
+
+#include <log/LogStore.h>
 
 #include <QClipboard>
 #include <QDesktopServices>
@@ -9,13 +13,20 @@
 #include <QTime>
 #include <QUrl>
 
-App::App(QObject *parent)
+namespace {
+constexpr int kMaxLogRows = 5000;
+}
+
+App::App(QQmlEngine *engine, QObject *parent)
     : QObject(parent)
+    , m_logStore(new ffgui::LogStore(this))
+    , m_covers(std::make_shared<CoverStore>())
     , m_project(new Project(this))
     , m_selection(new Selection(this))
     , m_transport(new Transport(this))
     , m_meters(new Meters(this))
     , m_analysis(new Analysis(this))
+    , m_media(new MediaState(m_logStore, this))
     , m_render(new Render(this))
     , m_queue(new QueueModel(this))
     , m_caps(new Capabilities(this))
@@ -27,11 +38,31 @@ App::App(QObject *parent)
     , m_transcript(new TranscriptModel(this))
     , m_devices(new DevicesModel(this))
     , m_destinations(new DestinationsModel(this))
+    , m_engine(nullptr)
 {
+    if (engine)
+        engine->addImageProvider(QStringLiteral("cover"), new CoverProvider(m_covers));
+    m_project->setServices(m_logStore, m_covers);
     connect(m_queue, &RowModel::revisionChanged, this, &App::queuePendingChanged);
     connect(m_log, &RowModel::revisionChanged, this, &App::recount);
     connect(m_project, &Project::notice, this, [this](const QString &text) { toast(text); });
+    connect(m_logStore, &ffgui::LogStore::appended, this, [this](const ffgui::LogStore::Entry &e) {
+        if (m_log->count() >= kMaxLogRows)
+            m_log->removeAt(0);
+        m_log->append({ { "time", e.time.toString(QStringLiteral("HH:mm:ss")) }, { "jobId", e.jobId },
+                        { "level", e.level }, { "text", e.text }, { "source", e.source } });
+    });
+    m_engine = new Engine(this);
+    m_engine->start();
 }
+
+App::~App()
+{
+    // The engine's jobs and threads go before the objects they report to.
+    delete m_engine;
+    m_engine = nullptr;
+}
+
 
 int App::queuePending() const
 {
@@ -90,7 +121,7 @@ void App::runCommand(const QString &)
 
 void App::openInFfplay()
 {
-    toast(tr("Opening in ffplay isn't available yet"));
+    m_engine->openInFfplay();
 }
 
 void App::revealInFolder(const QString &path)
@@ -111,8 +142,7 @@ void App::revealInFolder(const QString &path)
 
 void App::logLine(const QString &level, const QString &text, const QString &source, const QString &jobId)
 {
-    m_log->append({ { "time", QTime::currentTime().toString(QStringLiteral("HH:mm:ss")) },
-                    { "jobId", jobId }, { "level", level }, { "text", text }, { "source", source } });
+    m_logStore->append(jobId, level, text, source);
 }
 
 void App::recount()

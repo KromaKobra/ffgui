@@ -3,6 +3,9 @@
 #include <QQmlEngine>
 #include <QUrl>
 #include <QVariantMap>
+#include <QVector>
+
+#include <memory>
 
 // The background analysis of the current input (levels, loudness, silence,
 // clipping, phase, spectrum) and its results. Media View layers appear as
@@ -11,7 +14,10 @@
 // results: { loudness: { integrated, lra, truePeak, maxShortTerm, curve },
 //            levels: { peak, rms, crest, dc: [..], clipSamples, clips: [t..] },
 //            silence: [{ start, end }], phase: { mean, curve }, spectrum: { centroid, rolloff, flatness },
-//            decode: { errors, warnings, messages } }
+//            decode: { errors, warnings, messages }, clipping: { samples, times } }
+//
+// Per-100 ms series (momentary, shortTerm, phase) are kept in C++ for the
+// curve items; seriesAt() reads one value.
 class Analysis : public QObject
 {
     Q_OBJECT
@@ -50,6 +56,17 @@ public:
     Q_INVOKABLE void restart();
     // Measures [start, end] of the current input; results land in rangeStats.
     Q_INVOKABLE void measureRange(double start, double end);
+    // The value of a series at `t` (nearest block), NaN when there is none.
+    Q_INVOKABLE double seriesAt(const QString &name, double t) const;
+
+    struct Series
+    {
+        QVector<double> times;
+        QVector<float> values;
+    };
+    std::shared_ptr<const Series> series(const QString &name) const { return m_series.value(name); }
+    void setSeries(const QString &name, std::shared_ptr<const Series> series);
+    void clearSeries();
 
     void setState(const QString &state, const QString &subject = {}, const QString &error = {});
     void setProgress(double progress, const QString &stage);
@@ -64,6 +81,7 @@ signals:
     void restartRequested();
     void rangeStatsChanged();
     void rangeRequested(double start, double end);
+    void seriesChanged();
 
 private:
     QString m_state = QStringLiteral("idle");
@@ -73,4 +91,5 @@ private:
     QVariantMap m_results;
     QString m_error;
     QVariantMap m_rangeStats;
+    QHash<QString, std::shared_ptr<const Series>> m_series;
 };

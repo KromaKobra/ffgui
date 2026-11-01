@@ -81,7 +81,7 @@ private slots:
 
     void stepFilterSearchesPlainAndFfmpegNames()
     {
-        App app;
+        App app(nullptr);
         StepFilter filter;
         filter.setSourceModel(app.catalog()->steps());
         filter.setSearch(QStringLiteral("afftdn"));

@@ -2,9 +2,16 @@
 
 #include "Models.h"
 
+#include <probe/ProbeResult.h>
+
 #include <QQmlEngine>
 #include <QUndoStack>
 #include <QUrl>
+
+#include <memory>
+
+class CoverStore;
+namespace ffgui { class LogStore; }
 
 // The open project: inputs, the processing chain and the output targets
 // (design: "a project = inputs + chain + outputs, saved as a recipe file").
@@ -26,7 +33,10 @@ class Project : public QObject
 
     Q_PROPERTY(int currentInput READ currentInput WRITE setCurrentInput NOTIFY currentInputChanged)
     Q_PROPERTY(int currentOutput READ currentOutput WRITE setCurrentOutput NOTIFY currentOutputChanged)
-    // The current input's row and its default track (empty maps when none).
+    // The track of the current input that the Media View shows and plays
+    // (index into its tracks); -1 = its default track.
+    Q_PROPERTY(int currentTrack READ currentTrack WRITE setCurrentTrack NOTIFY currentTrackChanged)
+    // The current input's row and the track shown (empty maps when none).
     Q_PROPERTY(QVariantMap input READ input NOTIFY inputChanged)
     Q_PROPERTY(QVariantMap track READ track NOTIFY inputChanged)
     Q_PROPERTY(bool hasInput READ hasInput NOTIFY inputChanged)
@@ -60,6 +70,8 @@ public:
     void setCurrentInput(int index);
     int currentOutput() const { return m_currentOutput; }
     void setCurrentOutput(int index);
+    int currentTrack() const { return m_currentTrack; }
+    void setCurrentTrack(int index);
     QVariantMap input() const;
     QVariantMap track() const;
     bool hasInput() const { return m_currentInput >= 0 && m_currentInput < m_inputs->count(); }
@@ -71,6 +83,18 @@ public:
     QVariantMap converter() const { return m_converter; }
     QString totalSizeText() const { return m_totalSizeText; }
     QVariantMap tags() const { return m_tags; }
+
+    // ----- For the engine (C++ only)
+    void setServices(ffgui::LogStore *log, std::shared_ptr<CoverStore> covers);
+    // What ffprobe said about an input (null while it is being read or when
+    // it failed). For a folder, its first readable file.
+    const ffgui::ProbeResult *probe(int index) const;
+    QString uid(int index) const { return m_inputs->value(index, QStringLiteral("uid")).toString(); }
+    int indexOf(const QString &uid) const { return m_inputs->find(QStringLiteral("uid"), uid); }
+    // The audio track the Media View shows (index into probe()->tracks), or -1.
+    int shownTrack() const;
+    // Health after a full decode check.
+    void setHealth(const QString &uid, const QString &health, const QString &text);
 
     // Inputs
     Q_INVOKABLE void addFiles(const QList<QUrl> &files);
@@ -124,6 +148,9 @@ signals:
     void modifiedChanged();
     void currentInputChanged();
     void currentOutputChanged();
+    void currentTrackChanged();
+    // An input finished probing (ok or not).
+    void inputProbed(const QString &uid, bool ok);
     void inputChanged();
     void chainChanged();
     void outputsChanged();
@@ -132,6 +159,34 @@ signals:
     void notice(const QString &text);
 
 private:
+    struct InputInfo
+    {
+        std::shared_ptr<ffgui::ProbeResult> probe;
+        QStringList files;          // a folder's audio files
+        int pending = 0;            // probes still running for it
+        int failed = 0;
+        QString firstError;
+        double duration = 0;
+        qint64 size = 0;
+        QStringList warnings;
+    };
+
+    QString addRow(const QVariantMap &row);
+    void probeNext();
+    void startProbe(const QString &uid, const QString &path, bool primary);
+    void probeFinished(const QString &uid, const QString &path, bool primary, bool ok, const ffgui::ProbeResult &result,
+                       const QString &error, const QStringList &warnings);
+    void fetchCover(const QString &uid, const ffgui::ProbeResult &result);
+    void updateRow(const QString &uid, const QVariantMap &changes);
+
+    ffgui::LogStore *m_log = nullptr;
+    std::shared_ptr<CoverStore> m_covers;
+    QHash<QString, InputInfo> m_info;
+    struct ProbeTask { QString uid, path; bool primary; };
+    QList<ProbeTask> m_probeQueue;
+    int m_probesRunning = 0;
+    int m_coverVersion = 0;
+    int m_currentTrack = -1;
     QString m_name = QStringLiteral("Untitled project");
     QUrl m_fileUrl;
     InputsModel *m_inputs;

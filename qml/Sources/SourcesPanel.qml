@@ -16,7 +16,7 @@ Item {
 
         PanelToolbar {
             Caption {
-                text: qsTr("%n inputs", "", App.project.inputs.count)
+                text: App.project.inputs.count === 1 ? qsTr("1 input") : qsTr("%1 inputs").arg(App.project.inputs.count)
                 Layout.fillWidth: true
             }
             MenuButton {

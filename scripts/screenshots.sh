@@ -17,11 +17,20 @@ XDG_CONFIG_HOME="$(mktemp -d)"
 export XDG_CONFIG_HOME
 trap 'rm -rf "$XDG_CONFIG_HOME"' EXIT
 
+# Capped like the tests, so nothing here can take over the machine.
+capped() {
+    if systemd-run --user --scope --quiet true 2>/dev/null; then
+        systemd-run --user --scope --quiet -p MemoryMax=2G -p MemorySwapMax=0 -p CPUQuota=200% "$@"
+    else
+        "$@"
+    fi
+}
+
 cmake --build --preset "$preset" --target tst_qml >/dev/null
-FFGUI_SCREENSHOT_DIR="$out" "build/$preset/tests/qml/tst_qml" -input tests/qml/tst_workspaces.qml >/dev/null
+FFGUI_SCREENSHOT_DIR="$out" capped timeout 180 "build/$preset/tests/qml/tst_qml" -input tests/qml/tst_workspaces.qml >/dev/null
 
 if [ -f "$quilt/examples/ffgui/Main.qml" ]; then
     qml_bin="$(command -v qml6 || command -v qml || echo "$(qmake6 -query QT_INSTALL_BINS)/qml")"
-    "$qml_bin" -I "$quilt" scripts/mockup-shots.qml -- "file://$quilt/examples/ffgui/Main.qml" "$out" 2>/dev/null
+    capped timeout 60 "$qml_bin" -I "$quilt" scripts/mockup-shots.qml -- "file://$quilt/examples/ffgui/Main.qml" "$out" 2>/dev/null
 fi
 ls "$out"

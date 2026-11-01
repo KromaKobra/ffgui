@@ -103,7 +103,7 @@ Item {
             Section {
                 title: qsTr("Chapters (%1)").arg(panel.chapters.length)
                 Repeater {
-                    model: panel.chapters
+                    model: panel.chapters.slice(0, 200)
                     delegate: RowLayout {
                         id: chapterRow
                         required property var modelData

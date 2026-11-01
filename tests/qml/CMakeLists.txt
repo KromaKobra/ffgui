@@ -6,4 +6,4 @@ target_link_libraries(tst_qml PRIVATE Qt6::QuickTest Qt6::Quick Qt6::QuickContro
 ffgui_link_qml_plugins(tst_qml)
 
 add_test(NAME qml COMMAND tst_qml)
-set_tests_properties(qml PROPERTIES LABELS qml ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+set_tests_properties(qml PROPERTIES LABELS qml TIMEOUT 180 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

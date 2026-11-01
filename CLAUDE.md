@@ -7,6 +7,8 @@
 - Screenshots of every workspace (and the Quilt mock-up): `scripts/screenshots.sh`
 - Run: `build/dev/src/app/ffgui`. Offscreen smoke run: `QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 5 build/dev/src/app/ffgui`
 - Ask before opening windows on the user's desktop or playing audio aloud. Automated playback tests run at zero volume.
+- Never run the app or a test by hand without a resource cap. A runaway QML loop once filled the user's 32 GB:
+  `systemd-run --user --scope --quiet -p MemoryMax=1500M -p MemorySwapMax=0 -p CPUQuota=100% <command>`. `run-tests.sh` and `screenshots.sh` cap themselves. Keep generated test files short (seconds, not minutes).
 
 ## Layering (enforced by scripts/check-imports.sh)
 
@@ -29,6 +31,22 @@
 - Names must not clash between Backend types and QML files (Backend's `Transport` hid `Media/Transport.qml`; it is `TransportBar.qml` now). Model roles must not reuse Item property names (`state`, `index` on a StripedRow, `text` on a Text).
 - Pure logic goes in `src/core` with QtTest coverage in `tests/core`; the Backend is a thin QML face over it.
 - Things not built yet are API stubs that toast "isn't available yet". Grep for that text to find them.
+
+## Running ffmpeg
+
+- Every run goes through `ffgui::ProcessJob` (argument list, never a shell; stderr parsed from `-loglevel level+...` into level/context lines; logged to the LogStore with the exact command). Background work (decoding for display, analysis) uses `setBackground(true)`.
+- `Engine` (backend) owns the jobs for the input on screen: `MediaState` decodes (`PcmReader` → `MediaData`), `AnalysisPass` measures, results are cached per input + track, `PlaybackEngine` plays.
+- Parsers are tested against output captured from this machine's ffmpeg (`tests/core/fixtures`). When ffmpeg's output changes, recapture rather than guess.
+- `LogLine::benign()` lists warnings that say nothing about a file's health ("Guessed Channel Layout").
+
+## QML performance rules
+
+- A Repeater's model must never be a count or list built from bindings that update separately (span ÷ step): one transient mismatch asked for millions of delegates. Build the list in one binding and cap it.
+- Item-per-entry overlays (clip marks, silence, chapters) show only what's visible, with a cap.
+- Don't give a Repeater an array literal that changes with live values (meters); keep delegates and bind values inside.
+- Q_INVOKABLE calls don't re-evaluate bindings when data changes. Bind to a NOTIFY property (`App.analysis.results.loudness`, not `ready("loudness")`); for one-off checks add a property dependency (`App.caps.state === "ready" && App.caps.hasFilter(...)`).
+- Scene items (`WaveformItem`, `SpectrogramItem`, `CurveItem`) draw into images shown as textures: the software renderer (offscreen tests, VMs) draws no custom geometry nodes.
+- `App` has no default constructor on purpose: QML then uses `App::create()`, which registers `image://cover`.
 
 ## QML style
 

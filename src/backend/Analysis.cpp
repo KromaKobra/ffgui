@@ -4,6 +4,9 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
+#include <algorithm>
+#include <cmath>
+
 Analysis::Analysis(QObject *parent)
     : QObject(parent)
 {
@@ -38,6 +41,8 @@ void Analysis::reset()
 {
     m_results.clear();
     emit resultsChanged();
+    clearSeries();
+    setRangeStats({});
     setProgress(0, {});
     setState(QStringLiteral("idle"));
 }
@@ -85,4 +90,30 @@ bool Analysis::exportCsv(const QUrl &file) const
         }
     }
     return out.write(csv) > 0;
+}
+
+double Analysis::seriesAt(const QString &name, double t) const
+{
+    const std::shared_ptr<const Series> s = m_series.value(name);
+    if (!s || s->times.isEmpty())
+        return NAN;
+    const auto it = std::lower_bound(s->times.begin(), s->times.end(), t);
+    qsizetype i = it - s->times.begin();
+    if (i >= s->times.size() || (i > 0 && t - s->times[i - 1] < s->times[i] - t))
+        --i;
+    return s->values[std::clamp<qsizetype>(i, 0, s->values.size() - 1)];
+}
+
+void Analysis::setSeries(const QString &name, std::shared_ptr<const Series> series)
+{
+    m_series.insert(name, std::move(series));
+    emit seriesChanged();
+}
+
+void Analysis::clearSeries()
+{
+    if (m_series.isEmpty())
+        return;
+    m_series.clear();
+    emit seriesChanged();
 }

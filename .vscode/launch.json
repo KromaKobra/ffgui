@@ -1,0 +1,72 @@
+{
+    // F5 builds (tasks.json) and starts ffgui under CodeLLDB (vadimcn.vscode-lldb).
+    // QML errors and console.log appear in the terminal panel.
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "ffgui",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/dev/src/app/ffgui",
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "build (dev)",
+            "env": {
+                "QT_FORCE_STDERR_LOGGING": "1"
+            }
+        },
+        {
+            // Starts with built-in workspaces and no saved layouts; your real
+            // settings in ~/.config/ffgui are left alone.
+            "name": "ffgui (fresh settings)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/dev/src/app/ffgui",
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "reset scratch settings",
+            "env": {
+                "QT_FORCE_STDERR_LOGGING": "1",
+                "XDG_CONFIG_HOME": "${workspaceFolder}/build/scratch-config"
+            }
+        },
+        {
+            // Logs every dock drag (start, drop target, outcome).
+            "name": "ffgui (Quilt drag log)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/dev/src/app/ffgui",
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "build (dev)",
+            "env": {
+                "QT_FORCE_STDERR_LOGGING": "1",
+                "QT_LOGGING_RULES": "quilt.drag.debug=true"
+            }
+        },
+        {
+            "name": "ffgui (release)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/release/src/app/ffgui",
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "build (release)",
+            "env": {
+                "QT_FORCE_STDERR_LOGGING": "1"
+            }
+        },
+        {
+            // The QuickTest suites, offscreen. Put a file in args to run just
+            // that one, e.g. "-input", "tests/qml/tst_shell.qml".
+            "name": "QML tests",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/dev/tests/qml/tst_qml",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "reset scratch settings",
+            "env": {
+                "QT_QPA_PLATFORM": "offscreen",
+                "QT_FORCE_STDERR_LOGGING": "1",
+                "XDG_CONFIG_HOME": "${workspaceFolder}/build/scratch-config"
+            }
+        }
+    ]
+}

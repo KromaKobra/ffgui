@@ -4,6 +4,7 @@
 #include "CatalogFacade.h"
 #include "Capabilities.h"
 #include "Command.h"
+#include "MediaState.h"
 #include "Meters.h"
 #include "Models.h"
 #include "Project.h"
@@ -14,6 +15,12 @@
 #include "ViewState.h"
 
 #include <QQmlEngine>
+
+#include <memory>
+
+class CoverStore;
+class Engine;
+namespace ffgui { class LogStore; }
 
 // The application as QML sees it: one singleton that owns the project and
 // everything the panels share. Panels read and call these objects and never
@@ -30,6 +37,7 @@ class App : public QObject
     Q_PROPERTY(Transport *transport READ transport CONSTANT)
     Q_PROPERTY(Meters *meters READ meters CONSTANT)
     Q_PROPERTY(Analysis *analysis READ analysis CONSTANT)
+    Q_PROPERTY(MediaState *media READ media CONSTANT)
     Q_PROPERTY(Render *render READ render CONSTANT)
     Q_PROPERTY(QueueModel *queue READ queue CONSTANT)
     Q_PROPERTY(Capabilities *caps READ caps CONSTANT)
@@ -48,13 +56,20 @@ class App : public QObject
     Q_PROPERTY(QString version READ version CONSTANT)
 
 public:
-    explicit App(QObject *parent = nullptr);
+    // With an engine, also registers image://cover on it. (No default
+    // constructor, so QML uses create().)
+    explicit App(QQmlEngine *engine, QObject *parent = nullptr);
+    ~App() override;
+    static App *create(QQmlEngine *qmlEngine, QJSEngine *) { return new App(qmlEngine); }
 
     Project *project() const { return m_project; }
     Selection *selection() const { return m_selection; }
     Transport *transport() const { return m_transport; }
     Meters *meters() const { return m_meters; }
     Analysis *analysis() const { return m_analysis; }
+    MediaState *media() const { return m_media; }
+    ffgui::LogStore *logStore() const { return m_logStore; }
+    std::shared_ptr<CoverStore> covers() const { return m_covers; }
     Render *render() const { return m_render; }
     QueueModel *queue() const { return m_queue; }
     Capabilities *caps() const { return m_caps; }
@@ -106,11 +121,14 @@ signals:
 private:
     void recount();
 
+    ffgui::LogStore *m_logStore;
+    std::shared_ptr<CoverStore> m_covers;
     Project *m_project;
     Selection *m_selection;
     Transport *m_transport;
     Meters *m_meters;
     Analysis *m_analysis;
+    MediaState *m_media;
     Render *m_render;
     QueueModel *m_queue;
     Capabilities *m_caps;
@@ -122,6 +140,7 @@ private:
     TranscriptModel *m_transcript;
     DevicesModel *m_devices;
     DestinationsModel *m_destinations;
+    Engine *m_engine;
     int m_warningCount = 0;
     int m_errorCount = 0;
 };

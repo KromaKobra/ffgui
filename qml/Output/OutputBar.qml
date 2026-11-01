@@ -58,7 +58,7 @@ Rectangle {
             Layout.fillWidth: true
             spacing: Metrics.spacingWide
             StageBadge { number: 4; title: qsTr("Deliver") }
-            Label { text: App.render.label || qsTr("Rendering %n files", "", App.render.fileCount) }
+            Label { text: App.render.label || (App.render.fileCount === 1 ? qsTr("Rendering 1 file") : qsTr("Rendering %1 files").arg(App.render.fileCount)) }
             ProgressBar { value: App.render.progress; Layout.fillWidth: true }
             Label {
                 font.family: Metrics.monoFamily

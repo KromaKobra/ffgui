@@ -101,6 +101,15 @@ Rectangle {
 
         Item { Layout.fillWidth: true }
 
+        FfToolButton {
+            text: "ffplay"
+            font.pixelSize: Metrics.fontCaption
+            enabled: App.project.hasInput
+            tip: qsTr("Open in ffplay from the playhead, for reference listening")
+            onClicked: App.openInFfplay()
+        }
+        ToolSeparator { }
+
         Label { text: "A/B"; font.pixelSize: Metrics.fontCaption; opacity: 0.6 }
         Row {
             // Disabled buttons get no hover, so the reason hangs on the row.

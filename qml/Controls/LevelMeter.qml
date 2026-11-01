@@ -38,28 +38,28 @@ Item {
 
         Rectangle { anchors.fill: parent; color: Theme.meterTrack; radius: Metrics.radiusSmall }
 
-        Repeater {
-            model: [[meter.level, 0.45], [meter.body, 1]]
-            delegate: Item {
-                required property var modelData
+        // Peak, faint; RMS, solid. Both reveal the same gradient.
+        component Fill: Item {
+            id: fill
+            property real db
+            anchors.bottom: parent.bottom
+            width: parent.width
+            height: meter.frac(fill.db) * track.height
+            clip: true
+            Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
-                height: meter.frac(modelData[0]) * track.height
-                clip: true
-                opacity: modelData[1]
-                Rectangle {
-                    anchors.bottom: parent.bottom
-                    width: parent.width
-                    height: track.height
-                    gradient: Gradient {
-                        GradientStop { position: 0; color: Theme.meterHot }
-                        GradientStop { position: 0.1; color: Theme.meterWarm }
-                        GradientStop { position: 0.3; color: Theme.meterGood }
-                        GradientStop { position: 1; color: Theme.meterLow }
-                    }
+                height: track.height
+                gradient: Gradient {
+                    GradientStop { position: 0; color: Theme.meterHot }
+                    GradientStop { position: 0.1; color: Theme.meterWarm }
+                    GradientStop { position: 0.3; color: Theme.meterGood }
+                    GradientStop { position: 1; color: Theme.meterLow }
                 }
             }
         }
+        Fill { db: meter.level; opacity: 0.45 }
+        Fill { db: meter.body }
         Rectangle {
             y: (1 - meter.frac(meter.held)) * track.height
             width: parent.width

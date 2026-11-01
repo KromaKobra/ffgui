@@ -1,0 +1,56 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build (dev)",
+            "type": "shell",
+            "command": "[ -d build/dev ] || cmake --preset dev; cmake --build --preset dev",
+            "options": { "cwd": "${workspaceFolder}" },
+            "group": { "kind": "build", "isDefault": true },
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "build (release)",
+            "type": "shell",
+            "command": "[ -d build/release ] || cmake --preset release; cmake --build --preset release",
+            "options": { "cwd": "${workspaceFolder}" },
+            "group": "build",
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "reset scratch settings",
+            "type": "shell",
+            "command": "rm -rf build/scratch-config && mkdir -p build/scratch-config",
+            "options": { "cwd": "${workspaceFolder}" },
+            "dependsOn": "build (dev)",
+            "problemMatcher": []
+        },
+        {
+            // Runs ffgui without a debugger; works with no extensions.
+            "label": "run ffgui",
+            "type": "shell",
+            "command": "build/dev/src/app/ffgui",
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": { "QT_FORCE_STDERR_LOGGING": "1" }
+            },
+            "dependsOn": "build (dev)",
+            "problemMatcher": []
+        },
+        {
+            "label": "run tests",
+            "type": "shell",
+            "command": "scripts/run-tests.sh",
+            "options": { "cwd": "${workspaceFolder}" },
+            "group": { "kind": "test", "isDefault": true },
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "screenshots",
+            "type": "shell",
+            "command": "scripts/screenshots.sh",
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": []
+        }
+    ]
+}

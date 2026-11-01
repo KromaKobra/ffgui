@@ -15,11 +15,14 @@ GridLayout {
     columnSpacing: Metrics.spacingSmall
     rowSpacing: 1
 
+    // The delegates stay put while the values change; only the count is
+    // the model.
     Repeater {
-        model: grid.readouts
+        model: grid.readouts.length
         delegate: Item {
             id: readout
-            required property var modelData
+            required property int index
+            readonly property var modelData: grid.readouts[index] ?? ({})
             Layout.columnSpan: 2
             Layout.fillWidth: true
             implicitHeight: 14

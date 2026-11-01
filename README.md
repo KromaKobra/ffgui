@@ -12,6 +12,17 @@ a modular QML front end docked with [Quilt](third_party/QUILT_VERSION).
 The design lives in the deVault notes: *ffgui Design Concept — Audio* and
 *FFmpeg Audio Capabilities — ffgui Reference*.
 
+## Status
+
+Phase 1 (Load and Inspect) works: add files, folders, URLs or drop them in;
+ffprobe fills the Sources cards (tracks, chapters, cover art, a health dot from
+probing and a full decode check); the Media View draws the real waveform and
+spectrogram with zoom down to single samples; one ffmpeg analysis pass gives
+loudness, true peak, silence, phase, spectrum, clipping and DC layers, the
+Analysis panel and selection stats; playback (original audio) drives live
+meters, and Open in ffplay plays from the playhead. The chain, outputs and
+rendering come in Phase 2.
+
 ## Build and run
 
 You need Qt 6.12 (Quick, Quick Controls, Multimedia, Quick Test), CMake 3.24+,
@@ -25,6 +36,12 @@ build/dev/src/app/ffgui
 
 `cmake --preset release` gives an optimized build in `build/release`.
 
+ffgui finds `ffmpeg`, `ffprobe` and `ffplay` on the PATH. To use other
+binaries, set `FFGUI_FFMPEG`, `FFGUI_FFPROBE` and `FFGUI_FFPLAY`, or the
+`tools/ffmpeg`, `tools/ffprobe`, `tools/ffplay` settings (in
+`~/.config/ffgui/ffgui.conf`). What the build can do is cached in
+`~/.cache/ffgui/capabilities.json` until the binary changes.
+
 ## Test
 
 ```sh
@@ -33,14 +50,20 @@ scripts/screenshots.sh        # every workspace, ffgui and the Quilt mock-up, in
 ```
 
 `run-tests.sh` fails on any qmllint warning. Tests run offscreen with a
-throwaway settings directory, so they never touch your saved layouts.
+throwaway settings directory, so they never touch your saved layouts, and
+inside a systemd scope capped at 3 GB and two cores (`FFGUI_TEST_MEMORY`
+changes the limit). The `ffmpeg`-labelled tests generate small files and use
+the real tools; playback tests run at zero volume. `ctest --preset dev -LE
+ffmpeg` leaves them out.
 
 ## Layout
 
 ```
-src/core/          ffgui_core: pure C++ (formatting, catalog, and later
-                   probing, analysis, DSP, playback, rendering)
-src/backend/       FFgui.Backend: the App singleton and the objects QML binds to
+src/core/          ffgui_core: pure C++. tools/ (running ffmpeg), caps/, probe/,
+                   media/ (decoding, peak pyramid, spectrogram), analysis/,
+                   dsp/ (loudness), playback/, metadata/, catalog/, log/
+src/backend/       FFgui.Backend: the App singleton, the Engine that runs the
+                   jobs, and the models and scene items QML binds to
 src/app/           main.cpp
 qml/Theme/         colour tokens, metrics, glyphs
 qml/Controls/      the Ff* input facade and shared patterns (no Backend)
@@ -48,7 +71,9 @@ qml/Shell/         the window, the dock (the only Quilt user), workspaces
 qml/Sources, Media, Meters, Chain, Inspector, Output, Tools/<panel>/
                    feature modules, one per region or panel
 third_party/Quilt  vendored copy of Quilt (scripts/sync-quilt.sh), never edited
-tests/core, qml    QtTest and QuickTest suites
+tests/core         unit tests; parsers run on output captured from ffmpeg 9.0.2
+tests/integration  the real ffmpeg/ffprobe/audio output on generated files
+tests/qml          QuickTest: controls, the shell, loading a real file
 ```
 
 `CLAUDE.md` has the layering rules the import check enforces.

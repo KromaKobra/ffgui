@@ -20,7 +20,8 @@ Item {
     property string formula: "0.5*sin(440*2*PI*t)"
     property string speech: qsTr("Testing, one, two, three")
 
-    readonly property bool flite: App.caps.hasFilter("flite")
+    // Reading state makes this re-check once the capabilities arrive.
+    readonly property bool flite: App.caps.state === "ready" && App.caps.hasFilter("flite")
     readonly property string source: {
         switch (panel.kind) {
         case "tone": return "sine=frequency=" + Math.round(panel.frequency) + ":sample_rate=" + panel.rate + ":duration=" + panel.length;

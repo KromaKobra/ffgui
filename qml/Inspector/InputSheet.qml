@@ -55,7 +55,7 @@ ColumnLayout {
     Section {
         title: qsTr("Tags (%1)").arg(Object.keys(sheet.tags).length)
         Repeater {
-            model: Object.keys(sheet.tags)
+            model: Object.keys(sheet.tags).slice(0, 200)
             delegate: Prop {
                 required property string modelData
                 key: modelData
@@ -83,12 +83,16 @@ ColumnLayout {
         title: qsTr("Chapters")
         expanded: false
         Repeater {
-            model: sheet.chapters
+            model: sheet.chapters.slice(0, 300)
             delegate: Prop {
                 required property var modelData
                 key: Format.timecode(modelData.start)
                 value: modelData.title || ""
             }
+        }
+        Hint {
+            visible: sheet.chapters.length > 300
+            text: qsTr("…and %1 more").arg(sheet.chapters.length - 300)
         }
     }
 

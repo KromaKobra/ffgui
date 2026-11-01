@@ -11,7 +11,8 @@ import FFgui.Theme
 Item {
     id: panel
 
-    readonly property bool whisper: App.caps.hasFilter("whisper")
+    // Reading state makes this re-check once the capabilities arrive.
+    readonly property bool whisper: App.caps.state === "ready" && App.caps.hasFilter("whisper")
     readonly property int current: {
         let k = -1;
         for (let i = 0; i < App.transcript.count; ++i)

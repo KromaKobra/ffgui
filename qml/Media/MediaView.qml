@@ -29,6 +29,11 @@ Item {
     property string rulerUnit: "timecode"
     property real bpm: 120
     property bool merged: false
+    // Shift+scroll: waveform amplitude, or the spectrogram's top frequency.
+    property real amplitude: 1
+    property real maxFrequency: 0
+    property bool logFrequency: true
+    readonly property real target: isNaN(App.meters.target) ? -23 : App.meters.target
 
     readonly property var channelNames: {
         const n = view.track.channels || 0;
@@ -61,11 +66,41 @@ Item {
     }
     function fit() { view.setView(0, view.duration); }
 
+    // The intervals ({ start, end }) that overlap the visible window, at most
+    // 400: overlays never create an item per region of a long file.
+    function visible_(intervals) {
+        const out = [];
+        for (const r of intervals) {
+            if (r.end >= view.viewStart && r.start <= view.viewEnd)
+                out.push(r);
+            if (out.length >= 400)
+                break;
+        }
+        return out;
+    }
+
     Connections {
         target: App.project
-        function onCurrentInputChanged() { view.fit(); }
+        function onCurrentInputChanged() {
+            view.fit();
+            view.amplitude = 1;
+            view.maxFrequency = 0;
+        }
     }
     onDurationChanged: view.fit()
+
+    // Zoomed past the peak pyramid's resolution: decode the visible samples.
+    Timer {
+        id: windowRequest
+        interval: 120
+        onTriggered: {
+            const spp = view.span * view.sampleRate / Math.max(1, lanesArea.tracksWidth);
+            if (spp < 256)
+                App.media.requestWindow(Math.max(0, view.viewStart - view.span * 0.5), Math.min(view.duration, view.viewEnd + view.span * 0.5));
+        }
+    }
+    onViewStartChanged: windowRequest.restart()
+    onViewEndChanged: windowRequest.restart()
 
     Rectangle { anchors.fill: parent; color: Theme.canvas }
 
@@ -74,10 +109,21 @@ Item {
         visible: !view.hasInput
     }
 
+    EmptyState {
+        anchors.fill: parent
+        visible: view.hasInput && (App.media.live || (!App.media.ready && !(App.project.input.probing ?? false)))
+        glyph: App.media.live ? Glyphs.url : Glyphs.warning
+        title: App.media.live ? qsTr("A live stream has no waveform") : qsTr("Nothing to show")
+        text: App.media.live ? qsTr("Its length isn't known, so it can't be drawn or analysed. Open it in ffplay to listen.")
+                             : App.project.input.healthText || qsTr("This input couldn't be read.")
+        actionText: App.media.live ? qsTr("Open in ffplay") : ""
+        onAction: App.openInFfplay()
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
-        visible: view.hasInput
+        visible: view.hasInput && App.media.ready
 
         // Title row: what is shown, ruler units, zoom, layers.
         RowLayout {
@@ -115,6 +161,13 @@ Item {
                 onClicked: view.fit()
             }
             FfToolButton {
+                visible: view.layers.spectrogram === true
+                text: view.logFrequency ? qsTr("Log Hz") : qsTr("Linear Hz")
+                font.pixelSize: Metrics.fontCaption
+                tip: qsTr("Spectrogram frequency axis. Shift+scroll over it to zoom frequencies.")
+                onClicked: view.logFrequency = !view.logFrequency
+            }
+            FfToolButton {
                 text: view.merged ? qsTr("Summed") : qsTr("Per channel")
                 font.pixelSize: Metrics.fontCaption
                 visible: (view.track.channels || 0) > 1
@@ -139,6 +192,15 @@ Item {
             viewEnd: view.viewEnd
             position: App.transport.position
             onScrollTo: start => view.setView(start, start + view.span)
+            content: WaveformItem {
+                anchors.fill: parent
+                media: App.media
+                channel: -1
+                viewStart: 0
+                viewEnd: view.duration
+                showRms: false
+                peakColor: Theme.overview
+            }
         }
 
         TimeRuler {
@@ -179,6 +241,7 @@ Item {
                     required property int index
                     required property string modelData
                     channel: index
+                    dataChannel: view.merged ? -1 : index
                     name: modelData
                     y: index * lanesArea.laneHeight
                     width: lanesArea.width
@@ -186,8 +249,11 @@ Item {
                     viewStart: view.viewStart
                     viewEnd: view.viewEnd
                     nyquist: view.sampleRate / 2
-                    clips: App.analysis.ready("clipping") ? (view.results.levels.clips || []) : []
-                    dc: App.analysis.ready("levels") && view.results.levels.dc ? view.results.levels.dc[index] : NaN
+                    amplitude: view.amplitude
+                    maxFrequency: view.maxFrequency
+                    logFrequency: view.logFrequency
+                    clips: view.results.clipping ? (view.results.clipping.times || []) : []
+                    dc: view.results.levels && view.results.levels.dc && !view.merged ? (view.results.levels.dc[index] ?? NaN) : NaN
                 }
             }
 
@@ -200,6 +266,21 @@ Item {
                 width: lanesArea.tracksWidth
                 height: 12
                 Rectangle { anchors.fill: parent; color: Theme.well }
+                CurveItem {
+                    anchors.fill: parent
+                    analysis: App.analysis
+                    series: "phase"
+                    viewStart: view.viewStart
+                    viewEnd: view.viewEnd
+                    minValue: -1
+                    maxValue: 1
+                    bars: true
+                    color: Theme.phaseGood
+                    warnColor: Theme.phaseWarn
+                    badColor: Theme.phaseBad
+                    warnBelow: 0.5
+                    badBelow: 0
+                }
                 Text {
                     x: -view.labelWidth + 8
                     y: -1
@@ -246,11 +327,10 @@ Item {
 
             // Grid at the ruler's ticks (beats when the ruler shows bars).
             Repeater {
-                model: view.layers.grid ? Math.max(0, Math.floor(view.span / ruler.step) + 2) : 0
+                model: view.layers.grid ? ruler.ticks : []
                 delegate: Rectangle {
-                    required property int index
-                    readonly property real t: ruler.firstTick + index * ruler.step
-                    x: lanesArea.xOf(t)
+                    required property real modelData
+                    x: lanesArea.xOf(modelData)
                     width: 1
                     height: lanesArea.lanesHeight
                     color: Theme.grid
@@ -259,7 +339,7 @@ Item {
 
             // Silence regions, with their length.
             Repeater {
-                model: view.layers.silence && App.analysis.ready("silence") ? view.results.silence : []
+                model: view.layers.silence && view.results.silence ? view.visible_(view.results.silence) : []
                 delegate: Rectangle {
                     id: quiet
                     required property var modelData
@@ -313,9 +393,42 @@ Item {
                 }
             }
 
-            // Integrated loudness, when the loudness layer is on.
+            // Loudness: the short-term curve (-60 to 0 LUFS over the lanes),
+            // the target line and the integrated value.
+            Item {
+                id: loudnessLayer
+                visible: view.layers.loudness === true && view.results.loudness !== undefined
+                x: view.labelWidth
+                width: lanesArea.tracksWidth
+                height: lanesArea.lanesHeight
+                function yOf(lufs) { return (1 - (lufs + 60) / 60) * height; }
+                CurveItem {
+                    anchors.fill: parent
+                    analysis: App.analysis
+                    series: "shortTerm"
+                    viewStart: view.viewStart
+                    viewEnd: view.viewEnd
+                    minValue: -60
+                    maxValue: 0
+                    color: Theme.loudness
+                }
+                Rectangle {
+                    y: loudnessLayer.yOf(view.target)
+                    width: parent.width
+                    height: 1
+                    color: Theme.target
+                    opacity: 0.8
+                }
+                Text {
+                    x: 6
+                    y: loudnessLayer.yOf(view.target) - 14
+                    text: qsTr("target %1 LUFS").arg(Format.number(view.target, 1))
+                    color: Theme.target
+                    font.pixelSize: Metrics.fontSmall
+                }
+            }
             Rectangle {
-                visible: view.layers.loudness === true && App.analysis.ready("loudness")
+                visible: view.layers.loudness === true && view.results.loudness !== undefined
                 anchors { right: parent.right; top: parent.top; margins: 6 }
                 width: integrated.implicitWidth + 12
                 height: 18
@@ -324,7 +437,7 @@ Item {
                 Text {
                     id: integrated
                     anchors.centerIn: parent
-                    text: App.analysis.ready("loudness")
+                    text: view.results.loudness
                           ? "I = " + Format.number(view.results.loudness.integrated) + " LUFS · LRA "
                             + Format.number(view.results.loudness.lra) + " LU"
                           : ""
@@ -385,6 +498,35 @@ Item {
                 text: visible ? pointer.readout() : ""
             }
 
+            // Decoding progress, while the waveform fills in.
+            Rectangle {
+                visible: App.media.loading
+                z: 3
+                x: view.labelWidth + 6
+                y: 6
+                width: decodeLabel.implicitWidth + 16
+                height: 20
+                radius: Metrics.radius
+                color: Theme.tooltip
+                opacity: 0.8
+                Text {
+                    id: decodeLabel
+                    anchors.centerIn: parent
+                    text: qsTr("Decoding %1%").arg(Math.round(App.media.progress * 100))
+                    color: Theme.textOnAccent
+                    font.pixelSize: Metrics.fontSmall
+                }
+            }
+            Text {
+                visible: App.media.error !== "" && App.media.error !== "cancelled"
+                z: 3
+                x: view.labelWidth + 6
+                y: 6
+                text: Glyphs.warning + " " + qsTr("Decoding stopped: %1").arg(App.media.error)
+                color: Theme.errorSoft
+                font.pixelSize: Metrics.fontSmall
+            }
+
             // Below the lanes (z: -1) so the spectrogram dividers stay draggable.
             MouseArea {
                 id: pointer
@@ -407,11 +549,18 @@ Item {
                     const lane = laneAt(mouseY);
                     const fy = (mouseY - lane * lanesArea.laneHeight) / lanesArea.laneHeight;
                     const share = !view.layers.spectrogram ? 0 : !view.layers.waveform ? 1 : App.view.spectrogramShare;
-                    if (fy < 1 - share)
-                        return Format.timecode(t, true);
-                    const nyquist = view.sampleRate / 2;
-                    const f = 20 * Math.pow(nyquist / 20, 1 - (fy - (1 - share)) / share);
-                    return Format.timecode(t, true) + "   " + Format.frequency(f) + "   " + Format.note(f);
+                    const channel = view.merged ? -1 : lane;
+                    const halfPixel = view.span / Math.max(1, lanesArea.tracksWidth) / 2;
+                    if (fy < 1 - share) {
+                        const level = App.media.levelAt(channel, t, halfPixel);
+                        return Format.timecode(t, true) + "   " + (isNaN(level) ? "" : Format.dbValue(level) + " dBFS");
+                    }
+                    const top = view.maxFrequency > 0 ? Math.min(view.maxFrequency, view.sampleRate / 2) : view.sampleRate / 2;
+                    const u = 1 - (fy - (1 - share)) / share;
+                    const f = view.logFrequency ? 20 * Math.pow(top / 20, u) : 20 + (top - 20) * u;
+                    const db = App.media.spectrumAt(channel, t, f);
+                    return Format.timecode(t, true) + "   " + Format.frequency(f) + "   " + Format.note(f)
+                           + (isNaN(db) ? "" : "   " + Format.dbValue(db, 0) + " dB");
                 }
 
                 onPressed: ev => {
@@ -436,10 +585,23 @@ Item {
                         App.selection.clear();
                 }
                 onWheel: ev => {
-                    if (ev.modifiers & Qt.ShiftModifier)
-                        return;     // amplitude / frequency zoom: handled by the lanes' renderers
-                    const factor = ev.angleDelta.y > 0 ? 0.8 : 1.25;
-                    view.zoom(factor, lanesArea.tOf(ev.x));
+                    const delta = ev.angleDelta.y !== 0 ? ev.angleDelta.y : ev.angleDelta.x;
+                    if (ev.modifiers & Qt.ShiftModifier) {
+                        // Over a waveform: amplitude. Over a spectrogram: its top frequency.
+                        const lane = laneAt(ev.y);
+                        const fy = (ev.y - lane * lanesArea.laneHeight) / lanesArea.laneHeight;
+                        const share = !view.layers.spectrogram ? 0 : !view.layers.waveform ? 1 : App.view.spectrogramShare;
+                        if (fy >= 1 - share) {
+                            const nyquist = view.sampleRate / 2;
+                            const top = view.maxFrequency > 0 ? view.maxFrequency : nyquist;
+                            const next = top * (delta > 0 ? 0.8 : 1.25);
+                            view.maxFrequency = next >= nyquist ? 0 : Math.max(200, next);
+                        } else {
+                            view.amplitude = Math.max(1, Math.min(64, view.amplitude * (delta > 0 ? 1.25 : 0.8)));
+                        }
+                        return;
+                    }
+                    view.zoom(delta > 0 ? 0.8 : 1.25, lanesArea.tOf(ev.x));
                 }
             }
 

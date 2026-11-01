@@ -91,7 +91,7 @@ Flickable {
         y: graph.nodeY(graph.count - 1)
         isStep: false
         hasOutput: false
-        title: "out  " + qsTr("%n files", "", App.project.outputs.count)
+        title: "out  " + (App.project.outputs.count === 1 ? qsTr("1 file") : qsTr("%1 files").arg(App.project.outputs.count))
         selected: App.selection.kind === "output"
         onClicked: if (App.project.outputs.count > 0) App.selection.select("output", { index: Math.max(0, App.project.currentOutput) })
     }

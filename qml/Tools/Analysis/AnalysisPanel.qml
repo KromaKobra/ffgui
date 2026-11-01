@@ -17,6 +17,7 @@ Item {
     readonly property var spectrum: panel.results.spectrum || {}
     readonly property var silence: panel.results.silence || []
     readonly property var decode: panel.results.decode || {}
+    readonly property var clipping: panel.results.clipping || {}
     readonly property real target: isNaN(App.meters.target) ? -23 : App.meters.target
     readonly property real silenceTotal: panel.silence.reduce((sum, s) => sum + s.end - s.start, 0)
 
@@ -58,7 +59,7 @@ Item {
 
             Section {
                 title: qsTr("Loudness (EBU R128, ebur128)")
-                visible: App.analysis.ready("loudness")
+                visible: panel.results.loudness !== undefined
                 Prop {
                     key: qsTr("Integrated")
                     value: Format.number(panel.loudness.integrated) + " LUFS   "
@@ -73,32 +74,40 @@ Item {
             }
             Section {
                 title: qsTr("Levels (astats)")
-                visible: App.analysis.ready("levels")
+                visible: panel.results.levels !== undefined
                 Prop { key: qsTr("Peak"); value: Format.dbValue(panel.levels.peak) + " dBFS" }
                 Prop { key: qsTr("RMS"); value: Format.dbValue(panel.levels.rms) + " dBFS" }
-                Prop { key: qsTr("Crest factor"); value: Format.number(panel.levels.peak - panel.levels.rms) + " dB" }
+                Prop { key: qsTr("Crest factor"); value: Format.number(panel.levels.crest) + " dB" }
                 Prop {
                     key: qsTr("DC offset")
                     value: (panel.levels.dc || []).map(v => Format.signedNumber(v * 100, 3) + " %").join(" / ")
                 }
                 Prop {
                     key: qsTr("Clipping")
-                    value: (panel.levels.clipSamples || 0) > 0
-                           ? qsTr("%1 samples at full scale, in %2 spots").arg(panel.levels.clipSamples).arg((panel.levels.clips || []).length)
-                           : qsTr("none")
-                    valueColor: (panel.levels.clipSamples || 0) > 0 ? Theme.errorSoft : Theme.text
+                    value: panel.clipping.samples === undefined ? qsTr("checking…")
+                           : panel.clipping.samples > 0
+                             ? qsTr("%1 samples at full scale, in %2 spots").arg(panel.clipping.samples).arg((panel.clipping.times || []).length)
+                             : qsTr("none")
+                    valueColor: (panel.clipping.samples || 0) > 0 ? Theme.errorSoft : Theme.text
+                }
+                Prop {
+                    visible: !!panel.levels.bitDepth
+                    key: qsTr("Bit depth used")
+                    value: panel.levels.bitDepth || ""
+                    mono: true
                 }
             }
             Section {
                 title: qsTr("Spectrum (aspectralstats)")
-                visible: App.analysis.ready("spectrum")
+                visible: panel.results.spectrum !== undefined
                 Prop { key: qsTr("Centroid"); value: Format.frequency(panel.spectrum.centroid) }
                 Prop { key: qsTr("Roll-off (85%)"); value: Format.frequency(panel.spectrum.rolloff) }
                 Prop { key: qsTr("Flatness"); value: Format.number(panel.spectrum.flatness, 2) }
             }
             Section {
-                visible: App.analysis.ready("silence")
-                title: qsTr("Silence · %n regions", "", panel.silence.length) + ", " + Format.number(panel.silenceTotal, 0) + " s"
+                visible: panel.results.silence !== undefined
+                title: qsTr("Silence · %1, %2 s").arg(panel.silence.length === 1 ? qsTr("1 region") : qsTr("%1 regions").arg(panel.silence.length))
+                                                 .arg(Format.number(panel.silenceTotal, 1))
                 expanded: false
                 Repeater {
                     model: panel.silence
@@ -112,7 +121,7 @@ Item {
             }
             Section {
                 title: qsTr("Decoding")
-                visible: App.analysis.ready("decode")
+                visible: panel.results.decode !== undefined
                 Prop {
                     key: qsTr("Errors")
                     value: String(panel.decode.errors || 0)

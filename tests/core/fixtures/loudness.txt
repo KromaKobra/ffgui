@@ -1,0 +1,40 @@
+frame:0    pts:0       pts_time:0
+lavfi.r128.M=-120.691
+lavfi.r128.S=-120.691
+lavfi.r128.I=-70.000
+lavfi.r128.LRA=0.000
+lavfi.r128.LRA.low=0.000
+lavfi.r128.LRA.high=0.000
+lavfi.r128.true_peaks_ch0=0.013
+lavfi.r128.true_peaks_ch1=0.007
+lavfi.r128.true_peak=0.013
+frame:1    pts:4800    pts_time:0.1
+lavfi.r128.M=-120.691
+lavfi.r128.S=-120.691
+lavfi.r128.I=-70.000
+lavfi.r128.LRA=0.000
+lavfi.r128.LRA.low=0.000
+lavfi.r128.LRA.high=0.000
+lavfi.r128.true_peaks_ch0=0.013
+lavfi.r128.true_peaks_ch1=0.007
+lavfi.r128.true_peak=0.013
+frame:2    pts:9600    pts_time:0.2
+lavfi.r128.M=-120.691
+lavfi.r128.S=-120.691
+lavfi.r128.I=-70.000
+lavfi.r128.LRA=0.000
+lavfi.r128.LRA.low=0.000
+lavfi.r128.LRA.high=0.000
+lavfi.r128.true_peaks_ch0=0.013
+lavfi.r128.true_peaks_ch1=0.007
+lavfi.r128.true_peak=0.013
+frame:3    pts:14400   pts_time:0.3
+lavfi.r128.M=-40.011
+lavfi.r128.S=-120.691
+lavfi.r128.I=-40.020
+lavfi.r128.LRA=0.000
+lavfi.r128.LRA.low=0.000
+lavfi.r128.LRA.high=0.000
+lavfi.r128.true_peaks_ch0=0.013
+lavfi.r128.true_peaks_ch1=0.007
+lavfi.r128.true_peak=0.013

@@ -18,15 +18,31 @@ Item {
 
     readonly property real span: Math.max(1e-6, ruler.viewEnd - ruler.viewStart)
     // Seconds between ticks: the first step that leaves ~90 px apart.
-    readonly property real step: {
-        const steps = [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60,
-                       120, 300, 600, 900, 1800, 3600, 7200];
-        for (const s of steps)
-            if (s / ruler.span * ruler.width >= 90)
-                return s;
-        return 7200;
+    readonly property real step: ruler.stepFor(ruler.span, ruler.width)
+    // The tick times. Built in one go, with the step computed for exactly this
+    // span and width, and never more than kMaxTicks: a count derived from
+    // separately updated bindings can briefly pair a long span with a tiny
+    // step and ask for millions of delegates.
+    readonly property var ticks: {
+        const w = ruler.width, span = ruler.span;
+        if (!(w > 0) || !(span > 0))
+            return [];
+        const step = ruler.stepFor(span, w);
+        const out = [];
+        for (let t = Math.ceil(ruler.viewStart / step) * step; t <= ruler.viewEnd + 1e-9 && out.length < ruler.kMaxTicks; t += step)
+            out.push(t);
+        return out;
     }
-    readonly property real firstTick: Math.ceil(ruler.viewStart / ruler.step) * ruler.step
+    readonly property int kMaxTicks: 200
+
+    function stepFor(span, width) {
+        const steps = [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60,
+                       120, 300, 600, 900, 1800, 3600, 7200, 14400, 28800, 86400];
+        for (const s of steps)
+            if (s / span * width >= 90)
+                return s;
+        return 86400;
+    }
 
     function xOf(t) { return (t - ruler.viewStart) / ruler.span * ruler.width; }
 
@@ -46,11 +62,11 @@ Item {
     clip: true
 
     Repeater {
-        model: Math.max(0, Math.floor((ruler.viewEnd - ruler.firstTick) / ruler.step) + 1)
+        model: ruler.ticks
         delegate: Item {
             id: tick
-            required property int index
-            readonly property real t: ruler.firstTick + index * ruler.step
+            required property real modelData
+            readonly property real t: modelData
             x: ruler.xOf(t)
             Rectangle { y: 12; width: 1; height: 6; color: Theme.textFaint }
             Text {
@@ -63,16 +79,28 @@ Item {
         }
     }
 
+    // Flags for the chapters that start in view (at most 100), each knowing
+    // where the next one starts so labels never overlap.
+    readonly property var visibleChapters: {
+        if (!ruler.showChapters)
+            return [];
+        const out = [];
+        const list = ruler.chapters;
+        for (let i = 0; i < list.length && out.length < 100; ++i) {
+            const next = i + 1 < list.length ? list[i + 1].start : Infinity;
+            if (list[i].start <= ruler.viewEnd && next >= ruler.viewStart)
+                out.push({ start: list[i].start, title: list[i].title || "", next: Math.min(next, ruler.viewEnd) });
+        }
+        return out;
+    }
     Repeater {
-        model: ruler.showChapters ? ruler.chapters : []
+        model: ruler.visibleChapters
         delegate: ChapterFlag {
-            required property int index
             required property var modelData
-            readonly property real next: index + 1 < ruler.chapters.length ? ruler.chapters[index + 1].start : ruler.viewEnd
-            visible: modelData.start <= ruler.viewEnd && next >= ruler.viewStart
+            readonly property real next: modelData.next
             x: ruler.xOf(modelData.start)
             y: 18
-            title: modelData.title || ""
+            title: modelData.title
             room: ruler.xOf(next) - x - 3
         }
     }

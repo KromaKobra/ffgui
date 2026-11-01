@@ -49,7 +49,7 @@ Rectangle {
         }
         Text {
             visible: end.isInput && App.project.hasInput
-            text: (App.project.track.codec || "") + " · " + qsTr("%n ch", "", App.project.track.channels || 0)
+            text: (App.project.track.codec || "") + " · " + (App.project.track.channels || 0) + " ch"
             color: Theme.textDim
             font.pixelSize: Metrics.fontSmall
         }

@@ -84,8 +84,9 @@ void Transport::previousMarker()
 
 void Transport::nextMarker()
 {
+    // Markers within 50 ms count as "here", so repeated presses move on.
     for (double t : std::as_const(m_markers)) {
-        if (t > m_position + 0.5) {
+        if (t > m_position + 0.05) {
             seek(t);
             return;
         }

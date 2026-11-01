@@ -40,4 +40,11 @@ export QT_QPA_PLATFORM="${QT_QPA_PLATFORM_TESTS:-offscreen}"
 XDG_CONFIG_HOME="$(mktemp -d)"
 export XDG_CONFIG_HOME
 trap 'rm -f "$lint_log"; rm -rf "$XDG_CONFIG_HOME"' EXIT
-ctest --preset "$preset" "$@"
+# Cap the tests' memory and CPU so a runaway test can't take over the machine
+# (FFGUI_TEST_MEMORY, default 3G; set FFGUI_TEST_UNCAPPED=1 to skip).
+if [ -z "${FFGUI_TEST_UNCAPPED:-}" ] && systemd-run --user --scope --quiet true 2>/dev/null; then
+    systemd-run --user --scope --quiet -p MemoryMax="${FFGUI_TEST_MEMORY:-3G}" -p MemorySwapMax=0 -p CPUQuota=200% \
+        ctest --preset "$preset" "$@"
+else
+    ctest --preset "$preset" "$@"
+fi

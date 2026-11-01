@@ -86,7 +86,7 @@ Card {
                         text: card.probing ? qsTr("Reading…")
                               : [Format.timecode(card.duration),
                                  card.size > 0 ? Format.bytes(card.size) : "",
-                                 card.count > 0 ? qsTr("%n files", "", card.count) : ""].filter(s => s !== "").join("  ·  ")
+                                 card.count > 0 ? (card.count === 1 ? qsTr("1 file") : qsTr("%1 files").arg(card.count)) : ""].filter(s => s !== "").join("  ·  ")
                     }
                 }
             }
@@ -126,7 +126,7 @@ Card {
             TapHandler { onTapped: card.chaptersOpen = !card.chaptersOpen }
         }
         Repeater {
-            model: card.expanded && card.chaptersOpen ? card.chapters : []
+            model: card.expanded && card.chaptersOpen ? card.chapters.slice(0, 200) : []
             delegate: ChapterRow {
                 required property var modelData
                 chapter: modelData

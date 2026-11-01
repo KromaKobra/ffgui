@@ -1,0 +1,20 @@
+frame:0    pts:0       pts_time:0
+lavfi.aphasemeter.phase=0.782196
+frame:1    pts:4800    pts_time:0.1
+lavfi.aphasemeter.phase=0.785507
+frame:2    pts:9600    pts_time:0.2
+lavfi.aphasemeter.phase=0.785507
+frame:3    pts:14400   pts_time:0.3
+lavfi.aphasemeter.phase=0.785507
+frame:4    pts:19200   pts_time:0.4
+lavfi.aphasemeter.phase=0.785507
+frame:5    pts:24000   pts_time:0.5
+lavfi.aphasemeter.phase=0.785507
+frame:6    pts:28800   pts_time:0.6
+lavfi.aphasemeter.phase=0.785507
+frame:7    pts:33600   pts_time:0.7
+lavfi.aphasemeter.phase=0.785507
+frame:8    pts:38400   pts_time:0.8
+lavfi.aphasemeter.phase=0.785507
+frame:9    pts:43200   pts_time:0.9
+lavfi.aphasemeter.phase=0.785507
