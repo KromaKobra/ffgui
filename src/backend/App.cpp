@@ -74,6 +74,16 @@ App::App(QQmlEngine *engine, QObject *parent)
         m_transcript->showInput(m_project->uid(m_project->currentInput()));
         m_compare->cancel();
     });
+    // An active graph always shows as one, whatever the workspace asks for;
+    // the Chain's Row button turns a linear graph back into rows first.
+    connect(m_project, &Project::graphChanged, this, [this] {
+        if (m_project->graphActive())
+            m_view->setChainGraph(true);
+    });
+    connect(m_view, &ViewState::chainGraphChanged, this, [this] {
+        if (!m_view->chainGraph() && m_project->graphActive())
+            m_view->setChainGraph(true);
+    });
     QTimer::singleShot(0, m_capture, &CaptureState::refreshDevices);
 }
 

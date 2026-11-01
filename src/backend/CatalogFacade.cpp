@@ -140,7 +140,7 @@ QVariantMap CatalogFacade::step(const QString &key) const
              { "blurb", s->blurb }, { "filter", s->filters.join(" + ") }, { "filters", s->filters },
              { "primaryFilter", s->primaryFilter() }, { "timeline", s->timeline }, { "builder", s->builder },
              { "template", s->tmpl }, { "library", s->library }, { "common", curated(s->common) },
-             { "advanced", curated(s->advanced) } };
+             { "advanced", curated(s->advanced) }, { "fixed", s->fixed } };
 }
 
 QVariantMap CatalogFacade::codec(const QString &key) const

@@ -28,6 +28,18 @@ void GraphProbe::run(const QString &input, int audioIndex, const QString &filter
         "-hide_banner", "-v", "level+verbose", "-i", input, "-map", QStringLiteral("0:a:%1").arg(audioIndex)};
     if (!filter.isEmpty())
         args << "-af" << filter;
+    start(args, output);
+}
+void GraphProbe::runGraph(const QStringList &inputs, const QString &filter, const QString &pad,
+                          const QVariantMap &output)
+{
+    cancel();
+    QStringList args{"-hide_banner", "-v", "level+verbose"};
+    args << inputs << "-filter_complex" << filter << "-map" << u'[' + pad + u']';
+    start(args, output);
+}
+void GraphProbe::start(QStringList args, const QVariantMap &output)
+{
     if (!output.value(QStringLiteral("codec")).toString().isEmpty())
         args << "-c:a" << output.value(QStringLiteral("codec")).toString();
     if (output.value(QStringLiteral("rate")).toInt() > 0)

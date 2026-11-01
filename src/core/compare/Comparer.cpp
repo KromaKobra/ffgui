@@ -106,6 +106,23 @@ void Comparer::read()
     }
     m_pending.remove(0, frames * 8);
 }
+namespace
+{
+// "[2:a:0]" → "[3:a:0]": a graph's source references after one more input.
+QString shiftInputs(const QString &filter)
+{
+    static const QRegularExpression input(QStringLiteral("\\[(\\d+):a:(\\d+)\\]"));
+    QString shifted;
+    qsizetype at = 0;
+    for (auto matches = input.globalMatch(filter); matches.hasNext();) {
+        const auto m = matches.next();
+        shifted += filter.mid(at, m.capturedStart() - at) +
+                   QStringLiteral("[%1:a:%2]").arg(m.captured(1).toInt() + 1).arg(m.captured(2));
+        at = m.capturedEnd();
+    }
+    return shifted + filter.mid(at);
+}
+} // namespace
 void Comparer::decode()
 {
     auto chain = [this](bool b) {
@@ -128,11 +145,20 @@ void Comparer::decode()
             .arg(chain(false))
             .arg(m_spec.trackB)
             .arg(chain(true));
-    auto *job = new ProcessJob(FfTools::paths().ffmpeg,
-                               {"-hide_banner", "-nostdin", "-loglevel", "level+info", "-i", m_spec.a, "-i",
-                                m_spec.b, "-filter_complex", graph, "-map", "[trace]", "-c:a", "pcm_f32le",
-                                "-f", "f32le", "pipe:1"},
-                               this);
+    QStringList args{"-hide_banner", "-nostdin", "-loglevel", "level+info", "-i", m_spec.a};
+    if (m_spec.graphB.isEmpty())
+        args << "-i" << m_spec.b;
+    else {
+        // B is a graph plan: its sources follow A, so its input numbers shift
+        // by one, and its output pad replaces B's track.
+        args << m_spec.graphB.value("inputs").toStringList();
+        const QString pad = m_spec.graphB.value("outputs").toMap().first().toString();
+        graph.replace(QStringLiteral("[1:a:%1]").arg(m_spec.trackB), u'[' + pad + u']');
+        graph = shiftInputs(m_spec.graphB.value("filter").toString()) + u';' + graph;
+    }
+    args << "-filter_complex" << graph << "-map" << "[trace]" << "-c:a" << "pcm_f32le" << "-f" << "f32le"
+         << "pipe:1";
+    auto *job = new ProcessJob(FfTools::paths().ffmpeg, args, this);
     m_job = job;
     job->setBackground(true);
     job->setLog(m_log, "compare", "warning");
@@ -193,12 +219,17 @@ void Comparer::hash(int side)
     if (!filter.isEmpty())
         filter += u',';
     filter += "aresample=48000,aformat=sample_fmts=flt:channel_layouts=stereo";
-    auto *job =
-        new ProcessJob(FfTools::paths().ffmpeg,
-                       {"-hide_banner", "-nostdin", "-loglevel", "level+error", "-i", b ? m_spec.b : m_spec.a,
-                        "-map", QStringLiteral("0:a:%1").arg(b ? m_spec.trackB : m_spec.trackA), "-af",
-                        filter, "-c:a", "pcm_f32le", "-f", "md5", "pipe:1"},
-                       this);
+    QStringList args{"-hide_banner", "-nostdin", "-loglevel", "level+error"};
+    if (b && !m_spec.graphB.isEmpty()) {
+        const QString pad = m_spec.graphB.value("outputs").toMap().first().toString();
+        args << m_spec.graphB.value("inputs").toStringList() << "-filter_complex"
+             << m_spec.graphB.value("filter").toString() + ";[" + pad + u']' + filter + "[hash_audio]" << "-map"
+             << "[hash_audio]";
+    } else
+        args << "-i" << (b ? m_spec.b : m_spec.a) << "-map"
+             << QStringLiteral("0:a:%1").arg(b ? m_spec.trackB : m_spec.trackA) << "-af" << filter;
+    args << "-c:a" << "pcm_f32le" << "-f" << "md5" << "pipe:1";
+    auto *job = new ProcessJob(FfTools::paths().ffmpeg, args, this);
     m_job = job;
     job->setBackground(true);
     job->setLog(m_log, "compare hash", "error");

@@ -15,6 +15,36 @@ QStringList PcmReader::decodeArgs(const Source &s, double start, double length)
 {
     QStringList args { QStringLiteral("-hide_banner"), QStringLiteral("-nostdin"),
                        QStringLiteral("-loglevel"), QStringLiteral("level+error") };
+    if (!s.graphFilter.isEmpty()) {
+        // A seekable graph seeks each input to the window (timestamps kept for
+        // ranged steps). Others, such as a crossfade that reads its inputs one
+        // after the other, decode from the start and cut the window from the output.
+        const bool seek = s.graphSeekable && start > 0;
+        if (seek)
+            args << QStringLiteral("-copyts");
+        for (const auto &arg : s.graphInputs) {
+            if (seek && arg == u"-i")
+                args << QStringLiteral("-ss") << QString::number(start, 'f', 6);
+            args << arg;
+        }
+        QStringList tail;
+        if (seek && length > 0)
+            tail << QStringLiteral("atrim=duration=%1").arg(length, 0, 'f', 6);
+        else if (!seek && (start > 0 || length > 0))
+            tail << QStringLiteral("atrim=start=%1").arg(start, 0, 'f', 6) +
+                        (length > 0 ? QStringLiteral(":duration=%1").arg(length, 0, 'f', 6) : QString())
+                 << QStringLiteral("asetpts=PTS-STARTPTS");
+        if (!s.filter.isEmpty())
+            tail << s.filter;
+        if (tail.isEmpty())
+            tail << QStringLiteral("anull");
+        args << QStringLiteral("-filter_complex")
+             << s.graphFilter + QStringLiteral(";[%1]").arg(s.graphOutput) + tail.join(u',') + QStringLiteral("[pcm_out]")
+             << QStringLiteral("-map") << QStringLiteral("[pcm_out]") << QStringLiteral("-ac") << QString::number(s.channels)
+             << QStringLiteral("-ar") << QString::number(s.sampleRate) << QStringLiteral("-c:a") << QStringLiteral("pcm_f32le")
+             << QStringLiteral("-f") << QStringLiteral("f32le") << QStringLiteral("pipe:1");
+        return args;
+    }
     if (start > 0 && !s.filter.isEmpty()) args << QStringLiteral("-copyts");
     if (start > 0)
         args << QStringLiteral("-ss") << QString::number(start, 'f', 6);

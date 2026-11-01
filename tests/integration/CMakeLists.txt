@@ -15,3 +15,8 @@ qt_add_executable(tst_tooling_pipeline tst_tooling_pipeline.cpp)
 target_link_libraries(tst_tooling_pipeline PRIVATE Qt6::Test ffgui_backend)
 add_test(NAME tst_tooling_pipeline COMMAND tst_tooling_pipeline)
 set_tests_properties(tst_tooling_pipeline PROPERTIES LABELS ffmpeg TIMEOUT 180 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+qt_add_executable(tst_graph_pipeline tst_graph_pipeline.cpp)
+target_link_libraries(tst_graph_pipeline PRIVATE Qt6::Test ffgui_backend)
+add_test(NAME tst_graph_pipeline COMMAND tst_graph_pipeline)
+set_tests_properties(tst_graph_pipeline PROPERTIES LABELS ffmpeg TIMEOUT 180 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

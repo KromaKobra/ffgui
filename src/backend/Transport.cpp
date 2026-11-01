@@ -149,4 +149,7 @@ void Transport::setAbAvailability(bool enabled, const QString &reason)
     m_abEnabled = enabled;
     m_abReason = reason;
     emit abAvailabilityChanged();
+    // Without a comparison, play what a render would write.
+    if (!enabled)
+        setAb(QStringLiteral("processed"));
 }

@@ -37,10 +37,17 @@ channel routing; capture devices and recording; generated sources; independent
 stream destinations; transcript editing/import/export and a gated Whisper runner;
 and FFmpeg tool settings. Metadata edits use the output's Edit policy.
 
-Phase 4 (branching graphs and multiple inputs) is next. Playback has been tested
-silently; a listening check on your audio device is still pending. Recording tests
-use synthetic inputs, streaming tests use local HLS, and Whisper transcription
-requires a build with that filter plus a local whisper.cpp model.
+Phase 4 adds graph mode: the Chain as a node editor with extra input tracks as
+sources and Mix, Duck, Crossfade, Merge channels, Split, Split channels,
+Crossover and Convolution nodes, compiled to a labelled-pad `-filter_complex`.
+Graphs drive renders (several outputs on separate branches), preview, playback,
+Compare and streaming; tracks dragged from Sources become sources, and Row mode
+returns once the graph is a single path again.
+
+Playback has been tested silently; a listening check on your audio device is
+still pending. Recording tests use synthetic inputs, streaming tests use local
+HLS, and Whisper transcription requires a build with that filter plus a local
+whisper.cpp model.
 
 ## Build and run
 

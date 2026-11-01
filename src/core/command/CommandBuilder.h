@@ -13,6 +13,7 @@ struct ChainResult {
 class StepBuilders
 {
 public:
+    static QString optionValue(const QVariant &value);
     static QString build(const StepType &type, const QVariantMap &node, int channels, QString *error = nullptr);
 };
 class ChainCompiler

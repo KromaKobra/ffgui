@@ -43,6 +43,7 @@ struct StepType
     QStringList keywords;
     QList<OptionSpec> common;
     QList<OptionSpec> advanced;
+    QStringList fixed;          // filter options its builder derives (ports, timeline); hidden
     QJsonObject out;            // known output format: rate, fmt ("planar" = make planar), layout
 
     // The first filter, the one the Inspector footer names and links to.

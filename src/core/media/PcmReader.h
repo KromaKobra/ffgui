@@ -30,6 +30,13 @@ public:
         int sampleRate = 48000;
         double duration = 0;    // seconds, for progress and preallocation; 0 = unknown
         QString filter;
+        // A labelled-pad graph instead of input + filter: its input arguments,
+        // -filter_complex text and output pad. `filter` then follows the pad.
+        // graphSeekable seeks every input instead of cutting the window from
+        // the output (GraphPlan::seekable).
+        QStringList graphInputs;
+        QString graphFilter, graphOutput;
+        bool graphSeekable = false;
     };
 
     PcmReader(const Source &source, LogStore *log = nullptr, QObject *parent = nullptr);

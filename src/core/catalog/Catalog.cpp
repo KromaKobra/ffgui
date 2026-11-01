@@ -132,6 +132,7 @@ Catalog Catalog::load(const QString &dir, QString *error)
             s.keywords = strings(o.value(u"keywords"));
             s.common = parseOptions(o.value(u"common"));
             s.advanced = parseOptions(o.value(u"advanced"));
+            s.fixed = strings(o.value(u"fixed"));
             s.out = o.value(u"out").toObject();
             if (!s.key.isEmpty())
                 c.steps << s;

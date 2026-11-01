@@ -1,12 +1,14 @@
-# ffgui handoff: Phase 4 next
+# ffgui handoff: Phase 4 implemented, awaiting the user's review
 
-Read this before `CLAUDE.md`. Phases 0–3 are implemented. The next implementation
-phase is **Phase 4: graph mode**, after the user's go-ahead. Do not start it
-automatically. Phase 3 changes are uncommitted; Phase 2 is committed on `main`
-at `14985b3` (`stage 2 complete`). Do not discard the working tree.
+Read this before `CLAUDE.md`. Phases 0–3 are committed on `main` at `09810be`
+(`stage 3 complete`). **Phase 4 (graph mode) is implemented and verified in the
+working tree, uncommitted**; its new files (`src/core/graph/`,
+`tests/core/tst_graph.cpp`, `tests/integration/tst_graph_pipeline.cpp`,
+`tests/qml/tst_graph.qml`) are untracked until the user stages them. Commit only
+when asked.
 
-The approved plan is `~/.claude/plans/review-the-files-in-delegated-liskov.md`.
-Design references are in `~/Development/deVault/Projects/FFgui/`:
+The approved plan is `~/.claude/plans/review-the-files-in-delegated-liskov.md`;
+it ends at Phase 4. Design references are in `~/Development/deVault/Projects/FFgui/`:
 *ffgui Design Concept — Audio* and *FFmpeg Audio Capabilities — ffgui Reference*.
 The simulated UI in `~/Development/quilt/examples/ffgui/` is a reference only;
 leave it untouched. Its `Session.qml` is useful for intended interactions.
@@ -14,7 +16,9 @@ leave it untouched. Its `Session.qml` is useful for intended interactions.
 ## Working agreement
 
 - One phase at a time, followed by clean lint, passing tests, offscreen
-  screenshots, and a short report. Wait for the user before the next phase.
+  screenshots, and a short report. Wait for the user before going on.
+- If the user warns that credits are nearly exhausted, stop implementation and
+  testing immediately and document the exact state and remaining work instead.
 - **Cap every heavy command**, including builds and ad hoc FFmpeg runs:
   `systemd-run --user --scope --quiet -p MemoryMax=1500M -p MemorySwapMax=0 -p CPUQuota=100% <command>`.
   An uncapped test once exhausted the user's 32 GB. Use at most two build
@@ -24,7 +28,6 @@ leave it untouched. Its `Session.qml` is useful for intended interactions.
 - Ask before opening desktop windows or playing audible audio. All automated
   playback runs at zero volume. Capture tests use lavfi, never the microphone;
   streaming tests use local HLS, never a remote destination.
-- Commit only when asked.
 - Never edit `third_party/Quilt`. Only `qml/Shell/DockShell.qml` uses its public
   docking API. Preserve feature-module import boundaries and Ff control wrappers.
 
@@ -40,157 +43,145 @@ playback, meters, ffplay, capability detection and command logging.
 **Phase 2:** capability-gated catalog and parsed tool help, snapshot undo,
 chain editing/ranges/reordering, recipes and presets, command compilation,
 negotiated converters, processed decoding and synchronized A/B playback,
-live filter options, direct/selection renders and the batch queue. Snapshot
-recipes already contain stable node ids and explicit links for a linear graph.
+live filter options, direct/selection renders and the batch queue.
 
-**Phase 3:**
+**Phase 3:** metadata (tags, cover, chapters, track flags; per input uid, in the
+recipe's `edits`), Console, Compare, six scopes, routing matrix, recording,
+generated sources, stream destinations, transcripts with a gated Whisper runner,
+tool settings. Details and limits are in git history (`09810be`'s HANDOFF).
 
-- Metadata: common/custom tags, cover extraction/replacement/removal, editable
-  chapters and per-track title/language/default flags. Edits are per input uid,
-  undoable, and persist in the optional `edits` field of version-1 `.ffgui`
-  recipes. Outputs with metadata policy `edit` use these values; `copy` and
-  `strip` retain their policies. FFmetadata and PNG sidecars are content-addressed
-  in the cache; `BuiltCommand::prepare()` materializes them for renders and
-  copied/Console commands. Attached pictures are supported in MP3, FLAC and
-  MP4-family outputs; other containers follow their existing cover support.
-  Chapters also drive Media View bands and transport marker navigation. Batch
-  enqueue snapshots metadata per source instead of applying the selected input's
-  tags to every source.
-- Console: edited commands run as FFmpeg argument lists through `ProcessJob`,
-  with quoting/continuations, logging, errors and Stop. No shell is invoked;
-  operators/pipelines are rejected and edits never mutate the project.
-- Compare: original versus preview processing, or two inputs; signed B offset,
-  envelope correlation search, aligned peak/difference traces, `asdr`/`apsnr`
-  and decoded PCM MD5. Audio normalizes to 48 kHz stereo for scores/checksums;
-  scores use the overlap, hashes cover each aligned stream. Display/envelope
-  work is bounded to the first 30 seconds at 16 kHz mono, offset search to
-  ±2 seconds (also bounded by available overlap). Scores/hash jobs decode
-  the full sources. Offset estimates are quantized to 10 ms.
-- Scopes: spectrum, constant-Q musical bands, vectorscope, phase, level histogram,
-  and 24-bit activity. `Engine::tick()` shares each playback tap chunk between
-  scopes and meters. Stopped scopes use their own bounded PCM read at the
-  playhead; they must never borrow the Media View's single zoom window.
-  Musical analysis caps its longest window at 4096 frames, limiting bass
-  resolution. Texture rendering works with the offscreen/software renderer.
-- Routing: editable gain matrix adds a working `pan`/Channel mix step.
-- Recording: PulseAudio/PipeWire and ALSA discovery, recording format/path,
-  input level/elapsed time, duration/size limits, optional segment splitting,
-  graceful stop, and recorded files added as inputs. Existing files/segment
-  patterns are rejected. The monitor pipe always drains; the level checkbox
-  controls measurement, not audible monitoring. Output packet flushing lets
-  the size watchdog observe bytes even while the monitor output remains open.
-- Generate: tones (with amplitude), silence, noise, expressions, and gated flite
-  render asynchronously to persistent `AppDataLocation/generated/*.wav`, then
-  become probed inputs. Their path/name/kind/lavfi expression survive save/reopen.
-  New/Open cancel in-flight generation. Successful generated files are retained
-  so saved recipes and undo/redo can reopen them.
-- Stream out: independent RTMP/RTMPS, Icecast MP3, SRT MPEG-TS and local HLS
-  processes using the current source/chain snapshot. Each destination has
-  status, error, measured bitrate and a bounded 120-reading history. HLS
-  measures its uniquely named segment files because FFmpeg reports no
-  `total_size` there. Stop/Stop all are graceful; HLS requires a new playlist path.
-- Transcript: editable start/end/text, seek on timestamp, add/remove,
-  SRT/TXT/JSON import/export and the Media View lane. Untimed TXT lines get
-  five seconds each. Documents are retained per input during the session;
-  export them to retain edits across application restarts (they are not recipe
-  fields). A gated Whisper runner accepts a local whisper.cpp model/language,
-  writes SRT in a temporary directory and imports it. Changing inputs cancels it.
-  The installed FFmpeg has no Whisper filter, so only its unavailable path is
-  exercised here. Its arguments follow the official
-  [Whisper filter documentation](https://ffmpeg.org/ffmpeg-filters.html#whisper).
-- Shell: palette actions, working cover drop, remaining empty states and tool
-  path settings (header menu and palette). Settings validate/resolve executables
-  and refresh capabilities. The impulse-response drop target is deferred to
-  Phase 4 because `afir` requires a second graph input; the dead target is hidden.
+**Phase 4: graph mode.**
 
-## Verification and limits
+- **Editor** (`qml/Chain/ChainGraphView.qml`, `NodeCard.qml`): a wrapping
+  toolbar (+ Source and + Node menus, + Effect…, Remove, the connection list
+  with remove, and a hint/error line), draggable cards with labelled ports
+  (main/sidechain, first/second, signal/response, channel names, crossover
+  bands), hollow unconnected inputs, an error outline for unreadable sources,
+  and an empty state. Click an output port, then an input port, to connect
+  (a dashed wire follows the pointer); clicking a connected input disconnects
+  it; a new connection replaces the input's old one. Selecting a source card
+  shows its input in the Media View and Inspector; port clicks never select.
+  Tracks dragged from Sources (sideways) into the Chain become a source where
+  they land, wired into the card they land on (an output's feed is replaced);
+  in Row mode the drop makes that track the chain's input.
+- **Operations** (catalog category Graph): Mix (`amix`), Duck
+  (`sidechaincompress`), Crossfade (`acrossfade`, overlap and curves), Merge
+  channels (`amerge`), Split (`asplit`), Split channels (`channelsplit`), Crossover
+  (`acrossover`) and Convolution (`afir`, also the window's impulse-response drop
+  zone). Ordinary steps work as one-in/one-out nodes, bypass passes the first input.
+- **Compiler** (`src/core/graph/GraphCompiler`): validates ids, ports, single
+  connections per input and cycles; orders topologically; inserts `asplit` for
+  fan-out and `anullsink` for unused ports; emits a labelled-pad
+  `-filter_complex`. Bounds: 256 nodes, 1024 links, 16 sources, 8 ports (24 for
+  channel splits). GraphPlan carries input args, filter, output pads, duration,
+  `aligned` and `seekable`.
+- **Rows and graphs:** a linear project derives its graph; the first wiring,
+  source or multi-port node promotes it into the recipe's `graph` field. An
+  active graph always shows as a graph; Row is disabled while it branches and
+  otherwise turns it back into ordered rows (one undo step).
+- **Everywhere downstream:** renders (several outputs on separate branches,
+  metadata Copy/Edit/Strip, cover replacement, selection exports), processed
+  decoding and playback, the negotiated graph/Console, Compare (graph as B),
+  stream destinations (the selected output's branch) and the queue.
 
-Verified on 2026-11-01 against this machine's FFmpeg 9.0.2 and Qt 6.12:
+## Phase 4 verification (2026-11-01, FFmpeg 9.0.2, Qt 6.12)
 
-- Resource-capped `scripts/run-tests.sh`: build passes, import boundaries pass,
-  **zero qmllint warnings, all 15 ctest suites pass** (35.37 seconds for ctest).
-  This includes the existing delivery/playback regressions and panel
-  open/close/pop-out/workspace tests.
-- New `tests/core/tst_tooling.cpp`: command quoting/rejection, transcript formats
-  and validation, captured device/score parsers, capture/stream arguments,
-  correlation offsets, scope signal properties, metadata escaping and settings.
-- New `tests/integration/tst_tooling_pipeline.cpp`: real metadata/chapter/track
-  renders, cover replacement/removal/extraction, undo and recipe reopen,
-  identity/gain/delayed comparison and hashes, synthetic recording limits/splits/
-  stop/overwrite refusal, HLS bitrate/finalization/stop, backend capture/stream
-  state, per-input documents/metadata, Console run/stop, generator and stopped
-  scopes. A regression check protects the independent waveform zoom window.
-- New `tests/qml/tst_tooling.qml`: real metadata/undo, Compare, all six scope
-  modes (including a rendered phase pixel), routing and transcript workflows.
-  Its test surface must be visible for the pixel check. Sample pixel positions
-  are mapped into the captured root item's coordinates.
-- `scripts/screenshots.sh` captures all eight workspaces in `build/screenshots/`
-  with a real chain/output, comparison results, transcript, metadata and an idle
-  local HLS destination. Images were inspected; scope content sizing and compact
-  comparison layout were corrected. Quilt's mock-up is unchanged.
-- `git diff --check` is clean. No commits were created.
+- Resource-capped `scripts/run-tests.sh`: build, import boundaries, **zero
+  qmllint warnings, all 17 ctest suites pass** (48.8 s). New suites: `tst_graph`
+  (core) and `tst_graph_pipeline`; `tst_graph.qml` joins the QML suite.
+- `tests/core/tst_graph.cpp`: shape errors, golden filter text for every
+  operation, durations (amix modes, crossfade overlap, amerge shortest), option
+  pass-through/refusal, bypass, preview sinking, fan-out, channel layouts, port
+  names, seekable windows (`PcmReader::decodeArgs`), the linear check and the
+  recipe `graph` field (bounds; Phase 3 recipes still load).
+- `tests/integration/tst_graph_pipeline.cpp` (real FFmpeg): every operation
+  renders and decodes with the right length and channels; Duck repeated without
+  flakes; two-output fan-out; seeked windows match full decodes; silent playback
+  past a crossfade's first file with a mid-play graph edit, a speed change and a
+  return to rows; A/B availability rules; project topology (port-count edits,
+  cycles refused, undo/redo exactness, removed inputs, positions pruned, a
+  hand-edited recipe with a missing track and duplicates, folders refused);
+  the impulse-response action; two branches with Edit tags + new cover vs Strip,
+  44.1 kHz mono MP3 vs FLAC, then a selection export; output names/tags from the
+  right source; save/reopen, render, local HLS and Compare of a graph.
+- `tests/qml/tst_graph.qml`: the real panel's menus, port wiring, disconnect and
+  undo, drag and undo (cards survive model updates), source selection, locked
+  Row mode, save/reopen, removal back to a row, and the track drop handler.
+- `scripts/screenshots.sh`: all eight workspaces plus `ffgui-master-graph.png`
+  (a voice chain ducking a music bed, then mixed) were inspected; a 420 px
+  Chain panel was checked separately for toolbar wrapping. Quilt's mock-up is
+  unchanged. `git diff --check` is clean.
 
-The user's listening check remains outstanding. Actual microphone/loopback
-recording and remote RTMP/Icecast/SRT delivery have not been exercised: their
-argument construction is tested, while capture uses synthetic input and streaming
-runs local HLS. Whisper inference needs another FFmpeg build and a model; it is
-capability-gated, not simulated. Do not describe these as manually verified.
+**Not verified by hand:** listening (all playback ran at zero volume), a native
+pointer drag from Sources (offscreen windows have no drag and drop; the drop
+handler is tested directly), real capture devices and remote stream targets,
+and Whisper (Phase 3 gaps). Ask before opening windows or playing audio.
 
-## Code map and contracts
+## Graph mode contracts and limits
+
+- `Project.graphNodes`/`graphLinks` are the editable topology; `Project.graph`
+  stays the **negotiated** FFmpeg graph the Console shows. The recipe's `graph`
+  field holds `active`, node descriptors (step/input/output uids, a source's
+  `audioIndex`), port links and `positions`; parameters live in the step rows.
+- Mutate the topology only through Project (`addGraphSource`,
+  `addGraphOperation`, `connectGraph`, `disconnectGraph`, `moveGraphNode`,
+  `removeGraphNode`, `routeTrack`, `useRow`). `syncGraphState()` runs before every
+  undo snapshot and in `refreshDerived()`: it drops nodes whose step, input or
+  output is gone, links to ports a node no longer has, and duplicates; new steps
+  go in front of the selected output; new outputs share the first output's feed;
+  positions of departed nodes are pruned. The models reconcile by uid.
+- `Project::duration()` is the cached plan's longest output; the transport uses
+  the selected output's. `renderInput()` (the selected input if it feeds the
+  graph, else the first source) names outputs and supplies tags, chapters and
+  cover. A/B needs the selected input to feed an aligned graph; when A/B is
+  unavailable the transport switches to B (what a render writes).
+- Duck pads both inputs and cuts to the main input with `amix duration=first`:
+  plain `sidechaincompress` ends when either queue reports EOF, which varied
+  between runs (1.877 s instead of 2 s).
+- Seekable graphs (aligned, no convolution) seek every input with `-copyts`;
+  crossfades, convolutions, trims and speed changes decode from the start to
+  reach a seek point, so seeking in long files is slow in those graphs.
+  Stateful filters (compressors, amix's normalization ramp) start fresh at a
+  seek point, as in Row mode.
+- Port-shaping options are listed under `fixed` in `steps.json`: hidden from the
+  Inspector's Advanced section and refused by the compiler. Other options pass
+  through quoted. Crossover frequencies must rise (1–7 of them).
+- Preview converts a graph output to the selected input's channel count (a
+  4-channel merge previews in stereo); renders keep the graph's channels.
+- Batch folders can't be graph sources; queueing a graph renders that one
+  graph. Chain presets hold one path, so branched graphs can't be saved as
+  presets (save the project). The Deliver bar's output chips aren't drop targets
+  (graph output cards are). FFmpeg 9's `acrossfade` takes N inputs; ffgui uses two.
+
+## Code map
 
 | Location | Responsibility |
 |---|---|
-| `src/core/tools/` | `ProcessJob` for every tool invocation, progress/log parsing, paths, quoting, and the Console tokenizer. |
-| `src/core/project/` | Recipe JSON and snapshot undo. Version 1 accepts optional per-input metadata `edits`; old recipes remain readable. |
-| `src/core/command/` | StepBuilders, ChainCompiler, CopyAdvisor, SizeEstimator, CommandBuilder and GraphProbe. Today the compiler consumes row nodes and builds one linear chain or output `asplit`. |
-| `src/core/render/` | RenderJob, RenderQueue, BatchExpander; `RenderJob` prepares sidecars before starting. |
-| `src/core/metadata/` | Cover extraction plus FFmetadata serialization. |
-| `src/core/capture/` | DeviceList, Recorder/CaptureSpec, StreamOut/StreamSpec; no QML dependencies. |
-| `src/core/compare/`, `transcript/`, `dsp/Scopes.*` | Comparison pipeline/correlation, transcript formats/validation, scope DSP. |
-| `src/backend/Project.*` | Inputs/probes, row nodes, outputs, metadata edits, recipe/undo mutations and generated-source job. `ProjectEdit` coalesces nested mutations. |
-| `src/backend/Engine.*` | Current-input analysis/decoding/playback, compiler/render queue wiring, tap sharing, stopped scope reads. |
-| `src/backend/Tools.*` | App-owned ConsoleSession, TranscriptDocument, CompareState, ScopeState, CaptureState, StreamState and ToolSettings. |
-| `src/backend/ToolPlot.*` | Scope, waveform envelope and bitrate-history textures. |
-| `src/backend/Models.*`, `RowModel.*` | Fixed role lists are the QML contract; use fine-grained `update()`. `App.transcript` is now TranscriptDocument, a RowModel subclass. |
+| `src/core/tools/` | `ProcessJob` for every tool invocation, progress/log parsing, paths, quoting, the Console tokenizer. |
+| `src/core/project/` | Recipe JSON (version 1; optional `edits` and `graph`) and snapshot undo. |
+| `src/core/command/` | StepBuilders, ChainCompiler, CopyAdvisor, SizeEstimator, CommandBuilder (`track["graphPlan"]` selects the graph path) and GraphProbe (`runGraph`). |
+| `src/core/graph/` | GraphCompiler and GraphPlan. |
+| `src/core/render/`, `metadata/`, `capture/`, `compare/`, `transcript/`, `dsp/` | Renders and queue, cover/FFmetadata, recording and streams (`StreamSpec::graph`), comparison (`CompareSpec::graphB`), transcripts, scopes. |
+| `src/core/media/`, `playback/` | `PcmReader` (graph decode: `graphInputs/Filter/Output/Seekable`), `PlaybackEngine::setProcessedGraph`. |
+| `src/backend/Project.*` | Inputs/probes, rows, outputs, metadata edits, the graph topology, recipe/undo mutations. `ProjectEdit` coalesces nested mutations. |
+| `src/backend/Engine.*` | Current-input analysis/decoding/playback, `updateChain`/`updateGraph`, render queue wiring, tap sharing, stopped scope reads. |
+| `src/backend/Tools.*`, `ToolPlot.*` | Phase 3 tool facades and their textures. |
+| `src/backend/Models.*`, `RowModel.*` | Fixed role lists are the QML contract; GraphModel adds `stepIndex,inputUid,outputUid,audioIndex,type,inputNames,outputNames,error`. |
 | `qml/` | Feature modules import only Backend/Theme/Controls; Shell owns cross-panel dialogs, actions, drop targets and docking. |
 
-New App properties are `console`, `compare`, `scopes`, `capture`, `stream`,
-`settings`; `transcript` now exposes editing/import/export/transcription methods.
-Devices retain `id,name,backend,isDefault,isMonitor`; destination roles add
-`kbps,history,error` to `uid,name,url,protocol,format,status,bitrate`.
+## Next
 
-Project exposes `tags`, `chapters`, `editableTracks`, `cover`, `generating`,
-`setTag/removeTag`, `setChapter/addChapter/removeChapter`, `setTrackMetadata`,
-`setCoverArt/extractCover/removeCover`, and `outputMetadata(inputIndex=-1)`.
-Use stable input ids for durable edits; list indices are only a view projection.
-
-## Next: Phase 4 graph mode
-
-The approved remaining work is:
-
-1. Turn `ChainGraphView.qml` into an editable graph over recipe nodes/links.
-   It is currently a read-only linear projection; the graph model has
-   `uid,kind,label,detail,x,y,inputs,outputs,bypass`, but no editable link model.
-2. Represent extra inputs as graph sources and support Mix (`amix`), Duck
-   (`sidechaincompress`), Crossfade (`acrossfade`), Merge (`amerge`/`join`),
-   Split (`asplit`, `channelsplit`, `acrossover`) and the deferred IR/`afir` source.
-3. Compile graph links and labelled pads into `-filter_complex`, preserving
-   output configuration/metadata, preview, render and queue behavior. Keep
-   single-path recipes and existing linear compilation compatible.
-4. Allow row mode whenever the graph has one path; disable switching back only
-   while branches require graph mode. Master already opens with `chainGraph: true`.
-5. Add generated multi-input integration fixtures, graph/undo/recipe/compiler
-   tests and real QML interactions, then run the full lint/tests/screenshots.
-
-Read the original plan and design before choosing graph APIs. Phase 3 did not
-add graph operations or multi-input compilation. Source file/listening issues
-reported by the user take priority over extending the graph.
+The approved plan ends here; there is no Phase 5. After the user reviews
+Phase 4, prioritize their reports, then the outstanding hand checks above
+(listening, a pointer drag from Sources, real capture/loopback, remote
+RTMP/Icecast/SRT, a Whisper-enabled FFmpeg). Stacked multi-input Media View
+lanes stay outside the plan. Don't invent phases or widen scope without the
+user's direction.
 
 ## Gotchas to preserve
 
 - QML Repeaters must use a bounded list/count derived in one binding. A transient
-  mismatch once created millions of delegates. Transcript imports are capped,
-  but very large transcript lanes may still benefit from visible-window projection.
+  mismatch once created millions of delegates.
 - Invokable calls in bindings need an explicit NOTIFY dependency (for example
   `model.revision` or `App.caps.state`). Use fixed models for live data rather
   than rebuilding delegates every meter tick.
@@ -200,11 +191,13 @@ reported by the user take priority over extending the graph.
 - Avoid backend/QML type-name collisions, Item property/role collisions, and ids
   such as `palette`, `menu`, `scale`, `dock` that shadow their own type properties.
 - Parse captured FFmpeg output, not imagined formats. GraphProbe's fixture has
-  a duplicate `sample_rate` key (time base versus numeric rate); its tolerant
-  parser handles this deliberately.
+  a duplicate `sample_rate` key; its tolerant parser handles this deliberately.
 - New per-sample DSP needs `-O2` even in Debug (`src/core/CMakeLists.txt`).
 - Cancel/disconnect owned jobs before dependent App services are destroyed.
-  Capture/stream jobs attempt graceful stop so files finalize; background decode
-  and comparison jobs may be killed.
 - Do not let tests use real user settings, generated recordings, streams or
   audible playback. Tests/screenshots run with temporary configuration.
+- A drag (DragHandler) replaces a card's position bindings; restore them after
+  the move so undo moves the card back. Graph mutations that run inside another
+  edit call `syncGraphState()` first, so nodes added earlier in that edit exist.
+- QML test functions run in name order; `tst_workspaces.qml`'s
+  `test_wired_graph` relies on running after `test_screenshot`.

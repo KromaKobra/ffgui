@@ -16,7 +16,7 @@ private slots:
     void builtInLoads()
     {
         const Catalog &c = Catalog::builtIn();
-        QCOMPARE(c.categories.size(), 8);
+        QCOMPARE(c.categories.size(), 9);
         QVERIFY(c.steps.size() >= 28);
         QVERIFY(c.codecs.size() >= 9);
         QVERIFY(c.containers.size() >= 7);

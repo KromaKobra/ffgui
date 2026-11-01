@@ -27,7 +27,8 @@ QJsonObject RecipeJson::encode(const Recipe &r)
             {"outputs", array(r.outputs)},
             {"markers", array(r.markers)},
             {"metadata", QJsonObject::fromVariantMap(r.metadata)},
-            {"edits", QJsonObject::fromVariantMap(r.edits)}};
+            {"edits", QJsonObject::fromVariantMap(r.edits)},
+            {"graph", QJsonObject::fromVariantMap(r.graph)}};
 }
 
 bool RecipeJson::decode(const QJsonObject &json, Recipe *recipe, QString *error)
@@ -75,6 +76,11 @@ bool RecipeJson::decode(const QJsonObject &json, Recipe *recipe, QString *error)
             return fail(QStringLiteral("Graph link refers to a missing node"));
     r.metadata = json.value(u"metadata").toObject().toVariantMap();
     r.edits = json.value(u"edits").toObject().toVariantMap();
+    r.graph = json.value(u"graph").toObject().toVariantMap();
+    if (r.graph.value(QStringLiteral("nodes")).toList().size() > 256 ||
+        r.graph.value(QStringLiteral("links")).toList().size() > 1024 ||
+        r.graph.value(QStringLiteral("positions")).toMap().size() > 256)
+        return fail(QStringLiteral("Project graph exceeds its size limits"));
     *recipe = r;
     return true;
 }

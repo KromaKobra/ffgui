@@ -18,9 +18,10 @@ ColumnLayout {
     readonly property var spec: App.catalog.revision >= 0 ? App.catalog.step(sheet.step.type || "") : ({})
     readonly property var common: sheet.spec.common || []
     readonly property var advanced: {
-        // Curated extras, then every other option the filter has (from -h).
+        // Curated extras, then every other option the filter has (from -h),
+        // except those the step derives itself (a graph node's ports).
         if (App.catalog.revision < 0) return [];
-        const curated = (sheet.spec.common || []).concat(sheet.spec.advanced || []).map(o => o.key);
+        const curated = (sheet.spec.common || []).concat(sheet.spec.advanced || []).map(o => o.key).concat(sheet.spec.fixed || []);
         const all = App.catalog.filterOptions(sheet.spec.primaryFilter || "");
         return (sheet.spec.advanced || []).concat(all.filter(o => curated.indexOf(o.key) < 0));
     }

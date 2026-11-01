@@ -33,6 +33,7 @@ Status and the remaining phases: `docs/HANDOFF.md` (read it first).
 - Names must not clash between Backend types and QML files (Backend's `Transport` hid `Media/Transport.qml`; it is `TransportBar.qml` now). Model roles must not reuse Item property names (`state`, `index` on a StripedRow, `text` on a Text).
 - Pure logic goes in `src/core` with QtTest coverage in `tests/core`; the Backend is a thin QML face over it.
 - Things not built yet are API stubs that toast "isn't available yet". Grep for that text to find them.
+- Graph mode: `Project.graphNodes`/`graphLinks` are the editable topology (the recipe's `graph` field); `Project.graph` is the negotiated FFmpeg graph the Console shows. Change the topology only through Project's graph methods; `syncGraphState()` keeps it consistent with steps, inputs and outputs. `GraphCompiler` (`src/core/graph`) compiles it; port-shaping filter options go in a step's `fixed` list in `steps.json`.
 
 ## Running ffmpeg
 

@@ -6,6 +6,8 @@
 #include <project/Recipe.h>
 #include <functional>
 
+#include <QHash>
+#include <QPoint>
 #include <QQmlEngine>
 #include <QUndoStack>
 #include <QUrl>
@@ -34,6 +36,11 @@ class Project : public QObject
     Q_PROPERTY(InputsModel *inputs READ inputs CONSTANT)
     Q_PROPERTY(StepsModel *steps READ steps CONSTANT)
     Q_PROPERTY(GraphModel *graph READ graph CONSTANT)
+    Q_PROPERTY(GraphModel *graphNodes READ graphNodes CONSTANT)
+    Q_PROPERTY(RowModel *graphLinks READ graphLinks CONSTANT)
+    Q_PROPERTY(bool graphActive READ graphActive NOTIFY graphChanged)
+    Q_PROPERTY(bool canUseRow READ canUseRow NOTIFY graphChanged)
+    Q_PROPERTY(QString graphError READ graphError NOTIFY graphChanged)
     Q_PROPERTY(OutputsModel *outputs READ outputs CONSTANT)
 
     Q_PROPERTY(int currentInput READ currentInput WRITE setCurrentInput NOTIFY currentInputChanged)
@@ -45,7 +52,7 @@ class Project : public QObject
     Q_PROPERTY(QVariantMap input READ input NOTIFY inputChanged)
     Q_PROPERTY(QVariantMap track READ track NOTIFY inputChanged)
     Q_PROPERTY(bool hasInput READ hasInput NOTIFY inputChanged)
-    Q_PROPERTY(double duration READ duration NOTIFY inputChanged)
+    Q_PROPERTY(double duration READ duration NOTIFY chainChanged)
 
     Q_PROPERTY(int activeSteps READ activeSteps NOTIFY chainChanged)
     // The part of the timeline a Trim step keeps (the whole input otherwise).
@@ -75,6 +82,28 @@ public:
     StepsModel *steps() const { return m_steps; }
     GraphModel *graph() const { return m_graph; }
     OutputsModel *outputs() const { return m_outputs; }
+    GraphModel *graphNodes() const { return m_graphNodes; }
+    RowModel *graphLinks() const { return m_graphLinks; }
+    bool graphActive() const { return m_graphState.value(QStringLiteral("active")).toBool(); }
+    bool canUseRow() const { return m_canUseRow; }
+    QString graphError() const { return m_graphError; }
+    // The compiled graph (GraphPlan::variant()); onlyOutput sinks the other outputs.
+    QVariantMap graphPlan(const QString &onlyOutput = QString()) const;
+    // The input whose name, folder, tags and cover outputs take: the selected
+    // one, or in graph mode the first graph source unless the selected input
+    // is one. renderTrack() is its track (a graph source's track in graph mode).
+    int renderInput() const;
+    QVariantMap renderTrack() const;
+    Q_INVOKABLE QString addGraphSource(int inputIndex, int audioIndex = -1);
+    Q_INVOKABLE QString addGraphOperation(const QString &type);
+    Q_INVOKABLE bool connectGraph(const QString &from, int fromPort, const QString &to, int toPort);
+    Q_INVOKABLE void disconnectGraph(const QString &linkUid);
+    Q_INVOKABLE void moveGraphNode(const QString &id, double x, double y);
+    Q_INVOKABLE void removeGraphNode(const QString &id);
+    Q_INVOKABLE bool useRow();
+    // A track dropped on the graph: a source at (x, y), wired into the first
+    // open input of `target` (an output's feed is replaced). One undo step.
+    Q_INVOKABLE QString routeTrack(int inputIndex, int audioIndex, double x, double y, const QString &target = {});
     QUndoStack *undoStack() { return &m_undo; }
 
     int currentInput() const { return m_currentInput; }
@@ -177,6 +206,7 @@ public:
     Q_INVOKABLE bool save(const QUrl &file = {});
 
 signals:
+    void graphChanged();
     void nameChanged();
     void fileUrlChanged();
     void modifiedChanged();
@@ -245,6 +275,20 @@ private:
     InputsModel *m_inputs;
     StepsModel *m_steps;
     GraphModel *m_graph;
+    GraphModel *m_graphNodes;
+    RowModel *m_graphLinks;
+    QVariantMap m_graphState, m_graphPlan;
+    bool m_canUseRow = true;
+    QString m_graphError;
+    void syncGraphState();
+    void refreshGraph();
+    void promoteGraph();
+    bool graphFull();
+    QList<QVariantMap> graphDescriptors() const;
+    QList<QVariantMap> graphDefinition() const;
+    QHash<QString, QPoint> graphLayout(const QList<QVariantMap> &nodes, const QList<QVariantMap> &links) const;
+    QList<QVariantMap> graphConnections() const;
+    QVariantMap compileGraph(const QList<QVariantMap> &nodes, const QList<QVariantMap> &links, const QString &onlyOutput) const;
     OutputsModel *m_outputs;
     QUndoStack m_undo;
     int m_currentInput = -1;

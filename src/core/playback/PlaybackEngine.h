@@ -1,6 +1,7 @@
 #pragma once
 
 #include "RingBuffer.h"
+#include <media/PcmReader.h>
 
 #include <QAudioFormat>
 #include <QObject>
@@ -54,6 +55,9 @@ public:
 
     void setVolume(double volume) { m_volume.store(float(volume)); }
     void setSpeed(double speed);
+    // Processed playback from a labelled-pad graph (graphInputs/Filter/Output
+    // and duration of `graph`); setProcessedFilter() returns to a chain.
+    void setProcessedGraph(const PcmReader::Source &graph);
     void setProcessedFilter(const QString &filter, bool alreadyAppliedLive = false);
     void setProcessed(bool processed) { m_processed.store(processed); }
     bool sendLiveCommand(const QString &target, const QString &key, const QString &value);
@@ -78,6 +82,7 @@ signals:
 
 private:
     void startDecoder(double position);
+    void restartProcessed();
     void stopDecoder();
     QThread *launchDecoder(RingBuffer *ring, bool processed, double position);
     void render(float *out, qsizetype samples);
@@ -98,6 +103,7 @@ private:
     std::atomic_bool m_processedDone { false };
     std::atomic_bool m_processed { true };
     QString m_filter;
+    PcmReader::Source m_graph;      // a graph's inputs, filter and pad; replaces m_filter
     QMutex m_commandsMutex;
     QList<QByteArray> m_commands;
     QString m_decodeError;

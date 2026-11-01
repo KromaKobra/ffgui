@@ -8,6 +8,7 @@ struct CompareSpec {
     QString a, b, filterA, filterB;
     int trackA = 0, trackB = 0;
     double offset = 0;
+    QVariantMap graphB; // a GraphPlan for one output, compared as B instead of b/filterB
 };
 class Comparer : public QObject
 {

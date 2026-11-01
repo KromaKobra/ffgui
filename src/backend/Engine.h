@@ -42,6 +42,7 @@ private:
     void updateBlockers();
     QVariantMap renderTrack() const;
     void updateChain();
+    void updateGraph();
     void startRender(const QString &scope);
     void syncQueue();
     void enqueue();

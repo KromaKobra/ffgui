@@ -467,26 +467,32 @@ void Engine::measureRange(double start, double end)
 
 QVariantMap Engine::renderTrack() const
 {
-    auto track = m_app->project()->track();
-    const auto *probe = m_app->project()->probe(m_app->project()->currentInput());
+    auto *p = m_app->project();
+    const int input = p->renderInput();
+    auto track = p->renderTrack();
+    const auto *probe = p->probe(input);
     track.insert(QStringLiteral("coverStream"), probe ? probe->coverStream : -1);
-    track.insert(QStringLiteral("metadataEdits"), m_app->project()->outputMetadata());
+    track.insert(QStringLiteral("metadataEdits"), p->outputMetadata(input));
+    if (p->graphActive())
+        track.insert(QStringLiteral("graphPlan"), p->graphPlan());
     return track;
 }
 
 void Engine::updateBlockers()
 {
     auto *project = m_app->project();
+    // A graph names its own sources; renderInput() supplies the output's name and tags.
+    const int input = project->renderInput();
     QString blocker;
     if (!project->hasInput()) blocker = tr("Add an input first");
-    else if (project->input().value(QStringLiteral("probing")).toBool()) blocker = tr("Reading the input…");
-    else if (!project->probe(project->currentInput()) || project->track().isEmpty()) blocker = tr("Choose a readable audio track");
+    else if (project->inputs()->value(input, QStringLiteral("probing")).toBool()) blocker = tr("Reading the input…");
+    else if (!project->probe(input) || project->renderTrack().isEmpty()) blocker = tr("Choose a readable audio track");
     else if (!project->outputs()->count()) blocker = tr("Choose a format first");
     else if (m_app->caps()->state() != u"ready") blocker = tr("Waiting for FFmpeg");
     if (blocker.isEmpty()) {
         auto command = CommandBuilder::build(
-            project->probe(project->currentInput())->path,
-            project->track().value(QStringLiteral("audioIndex")).toInt(), renderTrack(), project->duration(),
+            project->probe(input)->path,
+            project->renderTrack().value(QStringLiteral("audioIndex")).toInt(), renderTrack(), project->duration(),
             project->steps()->rows(), project->outputs()->rows(), m_app->catalog()->catalog(), m_build);
         blocker = command.error;
         if (blocker.isEmpty() && !command.prepare(&blocker))
@@ -507,18 +513,23 @@ void Engine::updateChain()
         const auto spec = m_app->catalog()->step(node.value(QStringLiteral("type")).toString());
         m_app->catalog()->filterOptions(spec.value(QStringLiteral("primaryFilter")).toString());
     }
-    const auto chain = ChainCompiler::compile(p->steps()->rows(), m_app->catalog()->catalog(), m_build, track.channels, true);
     auto *t = m_app->transport();
     QList<double> markers;
     for (const auto &c : p->chapters())
         markers << c.toMap().value(QStringLiteral("start")).toDouble();
     t->setMarkers(markers);
-    t->setAbAvailability(chain.error.isEmpty() && !chain.filter.isEmpty() && chain.alignment,
-        !chain.error.isEmpty() ? chain.error : !chain.alignment ? tr("Speed changes prevent aligned A/B") : tr("Add a step to compare"));
     double target = NAN;
     for (const auto &s : p->steps()->rows())
         if (s.value(QStringLiteral("type")).toString() == u"loudnorm" && !s.value(QStringLiteral("bypass")).toBool()) target = s.value(QStringLiteral("params")).toMap().value(QStringLiteral("I"), -16).toDouble();
     m_app->meters()->setTarget(target);
+    if (p->graphActive()) {
+        updateGraph();
+        return;
+    }
+    t->setDuration(probe->duration);
+    const auto chain = ChainCompiler::compile(p->steps()->rows(), m_app->catalog()->catalog(), m_build, track.channels, true);
+    t->setAbAvailability(chain.error.isEmpty() && !chain.filter.isEmpty() && chain.alignment,
+        !chain.error.isEmpty() ? chain.error : !chain.alignment ? tr("Speed changes prevent aligned A/B") : tr("Add a step to compare"));
     if (!chain.error.isEmpty()) {
         m_player.setProcessedFilter({});
         m_app->media()->processed()->clear();
@@ -544,8 +555,56 @@ void Engine::updateChain()
     if (full.error.isEmpty()) m_graphProbe.run(probe->path, track.audioIndex, full.filter, p->outputs()->get(p->currentOutput()));
 }
 
+// Graph mode: processed playback and the processed view follow the selected
+// output's branch, which sets the timeline; the original side stays the
+// selected input, so A/B needs that input to feed an aligned graph.
+void Engine::updateGraph()
+{
+    auto *p = m_app->project();
+    auto *t = m_app->transport();
+    const auto *probe = p->probe(p->currentInput());
+    const auto &track = probe->tracks[p->shownTrack()];
+    const QString out = p->outputs()->value(std::max(0, p->currentOutput()), QStringLiteral("uid")).toString();
+    const auto plan = p->graphPlan(out);
+    const QString error = plan.value(QStringLiteral("error")).toString();
+    const QString pad = plan.value(QStringLiteral("outputs")).toMap().value(out).toString();
+    const double duration = plan.value(QStringLiteral("duration")).toDouble();
+    const bool feeds = p->renderInput() == p->currentInput();
+    t->setDuration(error.isEmpty() && duration > 0 ? duration : probe->duration);
+    t->setAbAvailability(error.isEmpty() && feeds && plan.value(QStringLiteral("aligned")).toBool(),
+                         !error.isEmpty() ? error
+                         : !feeds         ? tr("The selected input doesn't feed this graph")
+                                          : tr("This graph changes the timeline"));
+    if (!error.isEmpty() || pad.isEmpty()) {
+        m_player.setProcessedFilter({});
+        m_app->media()->processed()->clear();
+        m_processedFilter.clear();
+        return;
+    }
+    const QString signature = QString::fromLatin1(
+        QCryptographicHash::hash(QJsonDocument::fromVariant(plan).toJson(), QCryptographicHash::Sha256).toHex());
+    if (signature != m_processedFilter) {
+        m_processedFilter = signature;
+        PcmReader::Source source{probe->path, track.audioIndex, track.channels, track.sampleRate,
+                                 duration > 0 ? duration : probe->duration};
+        source.graphInputs = plan.value(QStringLiteral("inputs")).toStringList();
+        source.graphFilter = plan.value(QStringLiteral("filter")).toString();
+        source.graphOutput = pad;
+        source.graphSeekable = plan.value(QStringLiteral("seekable")).toBool();
+        m_player.setProcessedGraph(source);
+        m_app->media()->processed()->show(m_key + u':' + signature, source);
+    }
+    if (p->outputs()->count())
+        m_graphProbe.runGraph(plan.value(QStringLiteral("inputs")).toStringList(),
+                              plan.value(QStringLiteral("filter")).toString(), pad,
+                              p->outputs()->get(std::max(0, p->currentOutput())));
+    scheduleIdleMeters();
+}
+
 void Engine::liveParam(int index, const QString &key, const QVariant &v)
 {
+    if (m_app->project()->graphActive())
+        return;
     const auto row = m_app->project()->steps()->get(index);
     const auto spec = m_app->catalog()->step(row.value(QStringLiteral("type")).toString());
     if (!spec.value(QStringLiteral("builder")).toString().isEmpty()) return;
@@ -563,13 +622,13 @@ void Engine::liveParam(int index, const QString &key, const QVariant &v)
 void Engine::startRender(const QString &scope)
 {
     auto *p = m_app->project();
-    const auto *probe = p->probe(p->currentInput());
+    const auto *probe = p->probe(p->renderInput());
     if (!probe) return;
     const bool selection = scope == u"selection";
     if (selection && !m_app->selection()->isRange()) { m_app->toast(tr("Select a range first")); return; }
     RenderTask task;
     task.input = probe->path;
-    task.command = CommandBuilder::build(probe->path, p->track().value(QStringLiteral("audioIndex")).toInt(), renderTrack(), p->duration(), p->steps()->rows(), p->outputs()->rows(), m_app->catalog()->catalog(), m_build,
+    task.command = CommandBuilder::build(probe->path, p->renderTrack().value(QStringLiteral("audioIndex")).toInt(), renderTrack(), p->duration(), p->steps()->rows(), p->outputs()->rows(), m_app->catalog()->catalog(), m_build,
         selection ? m_app->selection()->start() : -1, selection ? m_app->selection()->end() : -1);
     if (!task.command.error.isEmpty()) { m_app->toast(task.command.error, QStringLiteral("error")); return; }
     task.output = task.command.paths.value(0);
@@ -606,6 +665,10 @@ void Engine::syncQueue()
 void Engine::enqueue()
 {
     auto *p = m_app->project();
+    if (p->graphActive()) {
+        startRender(QStringLiteral("all"));
+        return;
+    }
     const auto nodes = p->steps()->rows(), outputs = p->outputs()->rows();
     const auto catalog = m_app->catalog()->catalog();
     QHash<QString, QVariantMap> editsByPath;

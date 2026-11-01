@@ -62,6 +62,8 @@ QString named(QString filter, const QString &uid, int index = 0)
 QString num(double n) { return QString::number(n, 'g', 12); }
 } // namespace
 
+QString StepBuilders::optionValue(const QVariant &v) { return value(v); }
+
 QString StepBuilders::build(const StepType &type, const QVariantMap &node, int channels, QString *error)
 {
     QVariantMap params = type.defaults();
@@ -342,9 +344,22 @@ BuiltCommand CommandBuilder::build(const QString &input, int audioIndex, const Q
     };
     result.groups << shellQuote(FfTools::paths().ffmpeg.isEmpty() ? QStringLiteral("ffmpeg") : FfTools::paths().ffmpeg);
     group({"-hide_banner", "-loglevel", "level+info", "-n", "-progress", "pipe:1", "-nostats"});
-    group({"-i", input});
+    const auto graph = track.value(QStringLiteral("graphPlan")).toMap();
+    const bool graphMode = !graph.isEmpty();
+    if (graphMode && !graph.value(QStringLiteral("error")).toString().isEmpty()) {
+        result.error = graph.value(QStringLiteral("error")).toString();
+        return result;
+    }
+    if (graphMode)
+        group(graph.value(QStringLiteral("inputs")).toStringList());
+    else
+        group({"-i", input});
+    const int metadataSource =
+        graphMode ? std::max(0, int(graph.value(QStringLiteral("inputs")).toStringList().indexOf(input)) / 2) : 0;
     const auto edits = track.value(QStringLiteral("metadataEdits")).toMap();
-    int metadataInput = -1, coverInput = -1, nextInput = 1;
+    int metadataInput = -1, coverInput = -1,
+        nextInput =
+            graphMode ? graph.value(QStringLiteral("inputs")).toStringList().count(QStringLiteral("-i")) : 1;
     bool editing = false;
     for (const auto &out : outputs)
         editing |= out.value(QStringLiteral("metadata")).toString() == u"edit";
@@ -368,7 +383,9 @@ BuiltCommand CommandBuilder::build(const QString &input, int audioIndex, const Q
         }
     }
 
-    const auto chain = ChainCompiler::compile(nodes, catalog, caps, track.value(QStringLiteral("channels"), 2).toInt());
+    const auto chain = graphMode ? ChainResult()
+                                 : ChainCompiler::compile(nodes, catalog, caps,
+                                                          track.value(QStringLiteral("channels"), 2).toInt());
     if (!chain.error.isEmpty()) {
         result.error = chain.error;
         return result;
@@ -381,6 +398,8 @@ BuiltCommand CommandBuilder::build(const QString &input, int audioIndex, const Q
     }
     result.duration =
         selectionStart < 0 ? ChainCompiler::duration(nodes, catalog, duration) : std::max(0.0, end - start);
+    if (graphMode)
+        result.duration = graph.value(QStringLiteral("duration"), duration).toDouble();
     if (duration > 0 && result.duration <= 0) {
         result.error = QStringLiteral("The selected range is empty");
         return result;
@@ -389,10 +408,14 @@ BuiltCommand CommandBuilder::build(const QString &input, int audioIndex, const Q
     int encodes = 0;
     for (const auto &out : outputs) {
         advice << CopyAdvisor::advise(track, out, nodes, catalog);
+        if (graphMode) {
+            advice.last().copy = false;
+            advice.last().reason = QStringLiteral("Graph processing requires encoding");
+        }
         encodes += !advice.last().copy;
     }
     QString filter = chain.filter;
-    if (selectionStart >= 0 && selectionEnd > selectionStart) {
+    if (!graphMode && selectionStart >= 0 && selectionEnd > selectionStart) {
         // Selection coordinates refer to the source timeline; trim precedes
         // processing and the recipe's own trim is intersected with it.
         QList<QVariantMap> selectionNodes;
@@ -407,7 +430,7 @@ BuiltCommand CommandBuilder::build(const QString &input, int audioIndex, const Q
         if (!rest.filter.isEmpty())
             filter += u',' + rest.filter;
     }
-    if (encodes > 0 && outputs.size() > 1) {
+    if (!graphMode && encodes > 0 && outputs.size() > 1) {
         QString graph =
             QStringLiteral("[0:a:%1]").arg(audioIndex) + (filter.isEmpty() ? QStringLiteral("anull") : filter);
         if (encodes > 1)
@@ -415,6 +438,21 @@ BuiltCommand CommandBuilder::build(const QString &input, int audioIndex, const Q
         for (int i = 0; i < encodes; ++i)
             graph += QStringLiteral("[a%1]").arg(i);
         group({"-filter_complex", graph});
+    }
+    if (graphMode) {
+        QString graphText = graph.value(QStringLiteral("filter")).toString();
+        if (selectionStart >= 0 && selectionEnd > selectionStart) {
+            const auto pads = graph.value(QStringLiteral("outputs")).toMap();
+            for (const auto &out : outputs) {
+                const auto p = pads.value(out.value(QStringLiteral("uid")).toString()).toString();
+                graphText += QStringLiteral(";[%1]atrim=start=%2:end=%3,asetpts=PTS-STARTPTS[%1_selected]")
+                                 .arg(p)
+                                 .arg(selectionStart)
+                                 .arg(selectionEnd);
+            }
+            result.duration = selectionEnd - selectionStart;
+        }
+        group({"-filter_complex", graphText});
     }
     int pad = 0;
     for (int i = 0; i < outputs.size(); ++i) {
@@ -436,13 +474,30 @@ BuiltCommand CommandBuilder::build(const QString &input, int audioIndex, const Q
             return result;
         }
         QString path = outputPath(input, out, catalog);
-        if (QFileInfo(path).absoluteFilePath() == QFileInfo(input).absoluteFilePath() || result.paths.contains(path)) {
+        if (QFileInfo(path).absoluteFilePath() == QFileInfo(input).absoluteFilePath() ||
+            result.paths.contains(path) ||
+            (graphMode && graph.value(QStringLiteral("inputs")).toStringList().contains(path))) {
             result.error = QStringLiteral("Output paths must be unique and different from the input");
             return result;
         }
         result.paths << path;
-        group({"-map", advice[i].copy || outputs.size() == 1 ? QStringLiteral("0:a:%1").arg(audioIndex)
-                                                             : QStringLiteral("[a%1]").arg(pad++)});
+        if (graphMode) {
+            const auto p = graph.value(QStringLiteral("outputs"))
+                               .toMap()
+                               .value(out.value(QStringLiteral("uid")).toString())
+                               .toString();
+            if (p.isEmpty()) {
+                result.error = QStringLiteral("Output has no graph connection");
+                return result;
+            }
+            group({"-map",
+                   '[' + p +
+                       (selectionStart >= 0 && selectionEnd > selectionStart ? QStringLiteral("_selected")
+                                                                             : QString()) +
+                       ']'});
+        } else
+            group({"-map", advice[i].copy || outputs.size() == 1 ? QStringLiteral("0:a:%1").arg(audioIndex)
+                                                                 : QStringLiteral("[a%1]").arg(pad++)});
         if (advice[i].copy) {
             if (start > 0)
                 group({"-ss", num(start)});
@@ -450,7 +505,7 @@ BuiltCommand CommandBuilder::build(const QString &input, int audioIndex, const Q
                 group({"-t", num(end - start)});
             group({"-c:a", "copy"});
         } else {
-            if (outputs.size() == 1 && !filter.isEmpty())
+            if (!graphMode && outputs.size() == 1 && !filter.isEmpty())
                 group({"-af", filter});
             group({"-c:a", codec->key});
             if (codec->hasQuality) {
@@ -484,12 +539,12 @@ BuiltCommand CommandBuilder::build(const QString &input, int audioIndex, const Q
                 group({"-map", QString::number(coverInput) + ":v:0", "-c:v", "copy", "-disposition:v",
                        "attached_pic"});
             else if (cover >= 0)
-                group({"-map", QStringLiteral("0:%1").arg(cover), "-c:v", "copy", "-disposition:v",
-                       "attached_pic"});
+                group({"-map", QStringLiteral("%1:%2").arg(metadataSource).arg(cover), "-c:v", "copy",
+                       "-disposition:v", "attached_pic"});
         }
         const QString meta = strip                        ? QStringLiteral("-1")
                              : edit && metadataInput >= 0 ? QString::number(metadataInput)
-                                                          : QStringLiteral("0");
+                                                          : QString::number(metadataSource);
         group({"-map_metadata", meta, "-map_chapters", meta});
         if (edit) {
             const auto changes =

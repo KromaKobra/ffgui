@@ -16,6 +16,7 @@
 //   loadFixture     a small generated file to load (empty without ffmpeg):
 //                   4 s FLAC in Matroska, a title tag, two chapters, 1.5 s of
 //                   1 kHz at -20 dBFS then 2.5 s of silence
+//   secondFixture   another input for graph tests: 2 s of stereo 880 Hz WAV
 class Setup : public QObject
 {
     Q_OBJECT
@@ -27,6 +28,7 @@ public slots:
         QGuiApplication::setApplicationName(QStringLiteral("ffgui-tests"));
         QQuickStyle::setStyle(QStringLiteral("Fusion"));
         m_fixture = makeFixture();
+        m_second = makeSecond();
     }
 
     void qmlEngineAvailable(QQmlEngine *engine)
@@ -34,7 +36,8 @@ public slots:
         engine->rootContext()->setContextProperty(
             QStringLiteral("testEnv"),
             QVariantMap { { "screenshotDir", qEnvironmentVariable("FFGUI_SCREENSHOT_DIR") },
-                          { "loadFixture", m_fixture }, { "tempDir", m_dir.path() } });
+                          { "loadFixture", m_fixture }, { "secondFixture", m_second },
+                          { "tempDir", m_dir.path() } });
     }
 
 private:
@@ -63,8 +66,20 @@ private:
         return p.waitForFinished(20000) && p.exitCode() == 0 ? out : QString();
     }
 
+    QString makeSecond()
+    {
+        const QString ffmpeg = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
+        if (ffmpeg.isEmpty() || !m_dir.isValid())
+            return {};
+        const QString out = m_dir.filePath(QStringLiteral("second.wav"));
+        QProcess p;
+        p.start(ffmpeg, { "-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=880:r=48000:d=2",
+                          "-ac", "2", out });
+        return p.waitForFinished(20000) && p.exitCode() == 0 ? out : QString();
+    }
+
     QTemporaryDir m_dir;
-    QString m_fixture;
+    QString m_fixture, m_second;
 };
 
 QUICK_TEST_MAIN_WITH_SETUP(ffgui, Setup)

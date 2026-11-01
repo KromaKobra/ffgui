@@ -22,7 +22,7 @@ StepsModel::StepsModel(QObject *parent)
 }
 
 GraphModel::GraphModel(QObject *parent)
-    : RowModel({ "uid", "kind", "label", "detail", "x", "y", "inputs", "outputs", "bypass" }, parent)
+    : RowModel({ "uid", "kind", "label", "detail", "x", "y", "inputs", "outputs", "bypass", "stepIndex", "inputUid", "outputUid", "audioIndex", "type", "inputNames", "outputNames", "error" }, parent)
 {
 }
 

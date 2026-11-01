@@ -66,4 +66,31 @@ TestCase {
         verify(waitForRendering(test.win.contentItem, 2000));
         grabImage(test.win.contentItem).save(file);
     }
+
+    // Runs after the workspaces (test functions run in name order): a voice
+    // chain ducks a music bed, then both are mixed, shown in Master.
+    function test_wired_graph() {
+        if (testEnv.screenshotDir === "" || testEnv.secondFixture === "")
+            skip("FFGUI_SCREENSHOT_DIR is not set");
+        App.project.addFiles(["file://" + testEnv.secondFixture]);
+        tryVerify(() => App.project.inputs.count === 2 && !App.project.inputs.get(1).probing, 10000);
+        App.project.currentInput = 0;
+        const voice = App.project.steps.get(App.project.steps.count - 1).uid;
+        const music = App.project.addGraphSource(1);
+        const duck = App.project.addGraphOperation("duck");
+        verify(App.project.connectGraph(music, 0, duck, 0));
+        verify(App.project.connectGraph(voice, 0, duck, 1));
+        const mix = App.project.addGraphOperation("amix");
+        verify(App.project.connectGraph(voice, 0, mix, 1));
+        compare(App.project.graphError, "");
+        test.win.workspaces.switchTo("Master");
+        tryVerify(() => App.media.processed.ready && !App.media.processed.loading, 20000);
+        wait(500);
+        test.win.update();
+        verify(waitForRendering(test.win.contentItem, 2000));
+        grabImage(test.win.contentItem);
+        test.win.update();
+        verify(waitForRendering(test.win.contentItem, 2000));
+        grabImage(test.win.contentItem).save(testEnv.screenshotDir + "/ffgui-master-graph.png");
+    }
 }

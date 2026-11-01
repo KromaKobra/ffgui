@@ -1,6 +1,7 @@
 # ffgui_core: the pure C++ side (QtCore/Gui/Multimedia), no QML. Each folder
 # is small and has its own unit tests under tests/core.
 qt_add_library(ffgui_core STATIC
+    graph/GraphCompiler.cpp graph/GraphCompiler.h
     tools/CommandLine.cpp tools/CommandLine.h
     transcript/Transcript.cpp transcript/Transcript.h
     metadata/Metadata.cpp metadata/Metadata.h

@@ -1,5 +1,6 @@
 #pragma once
 #include <QTimer>
+#include <QVariantMap>
 #include <tools/ProcessJob.h>
 namespace ffgui
 {
@@ -55,6 +56,7 @@ class Recorder : public QObject
 struct StreamSpec {
     QString input, filter, protocol, url;
     int audioIndex = 0, bitrate = 128;
+    QVariantMap graph;
 };
 class StreamOut : public QObject
 {

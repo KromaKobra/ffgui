@@ -46,6 +46,7 @@ void PlaybackEngine::setSource(const Source &source)
     stop();
     m_source = source;
     m_filter.clear();
+    m_graph = {};
     m_source.channels = std::clamp(source.channels, 1, kMaxChannels);
     std::vector<std::atomic<float>> gains(size_t(m_source.channels));
     for (auto &g : gains)
@@ -147,7 +148,7 @@ bool PlaybackEngine::play(double position)
     m_tap = std::make_unique<RingBuffer>(size_t(rate) * m_source.channels / 2);
     m_frame.assign(size_t(kChunkFrames) * m_source.channels, 0.0f);
     m_frameB.assign(size_t(kChunkFrames) * m_source.channels, 0.0f);
-    m_processedRing = m_filter.isEmpty() ? nullptr : std::make_unique<RingBuffer>(size_t(rate) * m_source.channels / 2);
+    m_processedRing = m_filter.isEmpty() && m_graph.graphFilter.isEmpty() ? nullptr : std::make_unique<RingBuffer>(size_t(rate) * m_source.channels / 2);
     m_consumed = 0;
     m_ended = false;
     m_startPosition = std::max(0.0, position);
@@ -185,9 +186,27 @@ void PlaybackEngine::stop()
 
 void PlaybackEngine::setProcessedFilter(const QString &filter, bool appliedLive)
 {
-    if (filter == m_filter) return;
+    if (filter == m_filter && m_graph.graphFilter.isEmpty()) return;
+    m_graph = {};
     m_filter = filter;
     if (!m_playing || appliedLive) return;
+    restartProcessed();
+}
+// A graph can't take live commands and may change the timeline (the original
+// is padded to its length), so a new graph restarts both decoders.
+void PlaybackEngine::setProcessedGraph(const PcmReader::Source &graph)
+{
+    if (m_graph.graphInputs == graph.graphInputs && m_graph.graphFilter == graph.graphFilter &&
+        m_graph.graphOutput == graph.graphOutput && m_graph.duration == graph.duration &&
+        m_graph.graphSeekable == graph.graphSeekable)
+        return;
+    m_graph = graph;
+    m_filter.clear();
+    if (m_playing)
+        play(position());
+}
+void PlaybackEngine::restartProcessed()
+{
     // Pause consumption while replacing only the processed decoder. The
     // original ring retains its next frame, so it stays on the same clock.
     m_suspendForEdit = true;
@@ -195,7 +214,7 @@ void PlaybackEngine::setProcessedFilter(const QString &filter, bool appliedLive)
     const double at = position();
     m_stopProcessed = true;
     if (m_processedDecoder) { m_processedDecoder->wait(5000); delete m_processedDecoder; m_processedDecoder = nullptr; }
-    m_processedRing = filter.isEmpty() ? nullptr : std::make_unique<RingBuffer>(size_t(m_format.sampleRate()) * m_source.channels / 2);
+    m_processedRing = m_filter.isEmpty() && m_graph.graphFilter.isEmpty() ? nullptr : std::make_unique<RingBuffer>(size_t(m_format.sampleRate()) * m_source.channels / 2);
     { const QMutexLocker lock(&m_commandsMutex); m_commands.clear(); }
     m_stopProcessed = false;
     m_processedDone = false;
@@ -234,11 +253,20 @@ QThread *PlaybackEngine::launchDecoder(RingBuffer *ring, bool processed, double 
     PcmReader::Source s { m_source.input, m_source.audioIndex, m_source.channels, m_format.sampleRate(), 0 };
     QStringList filters;
     if (processed && !m_filter.isEmpty()) filters << m_filter;
+    // The original runs as long as the graph (a crossfade outlasts its first input).
+    if (!processed && !m_graph.graphFilter.isEmpty() && m_graph.duration > 0)
+        filters << QStringLiteral("apad=whole_dur=%1,atrim=duration=%1").arg(std::max(0.0, m_graph.duration - position), 0, 'f', 6);
     if (m_speed != 1.0) {
         double left = m_speed;
         while (left > 2) { filters << QStringLiteral("atempo=2"); left /= 2; }
         while (left < 0.5) { filters << QStringLiteral("atempo=0.5"); left /= 0.5; }
         filters << QStringLiteral("atempo=%1").arg(left, 0, 'f', 4);
+    }
+    if (processed && !m_graph.graphFilter.isEmpty()) {
+        s.graphInputs = m_graph.graphInputs;
+        s.graphFilter = m_graph.graphFilter;
+        s.graphOutput = m_graph.graphOutput;
+        s.graphSeekable = m_graph.graphSeekable;
     }
     s.filter = filters.join(u',');
     QStringList args = PcmReader::decodeArgs(s, position, 0);
@@ -246,11 +274,15 @@ QThread *PlaybackEngine::launchDecoder(RingBuffer *ring, bool processed, double 
     // FFmpeg's threaded pipeline can buffer seconds beyond our PCM ring.
     // Pace input to the playback clock so live commands affect frames near
     // the playhead. loudnorm needs a three-second lookahead to prime itself.
+    // A graph takes no live commands and may decode from its start to reach
+    // the playhead, so only the ring holds it back.
     const int inputAt = args.indexOf(QStringLiteral("-i"));
-    args.insert(inputAt, QStringLiteral("-readrate"));
-    args.insert(inputAt+1, QString::number(m_speed));
-    args.insert(inputAt+2, QStringLiteral("-readrate_initial_burst"));
-    args.insert(inputAt+3, processed && m_filter.contains(QStringLiteral("loudnorm")) ? QStringLiteral("3.1") : QStringLiteral("0.1"));
+    if (s.graphFilter.isEmpty()) {
+        args.insert(inputAt, QStringLiteral("-readrate"));
+        args.insert(inputAt+1, QString::number(m_speed));
+        args.insert(inputAt+2, QStringLiteral("-readrate_initial_burst"));
+        args.insert(inputAt+3, processed && m_filter.contains(QStringLiteral("loudnorm")) ? QStringLiteral("3.1") : QStringLiteral("0.1"));
+    }
     const int channels = m_source.channels;
     LogStore *log = m_log;
     auto *done = processed ? &m_processedDone : &m_decoderDone;

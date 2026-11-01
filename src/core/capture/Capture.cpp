@@ -251,11 +251,26 @@ QStringList StreamOut::args(const StreamSpec &s, QString *error)
         (QFileInfo(target).absoluteFilePath() == QFileInfo(s.input).absoluteFilePath() ||
          QFileInfo::exists(target)))
         return fail(QStringLiteral("Choose a new HLS playlist path"));
-    QStringList a{"-hide_banner", "-loglevel", "level+info",
-                  "-n",           "-re",       "-i",
-                  s.input,        "-map",      QStringLiteral("0:a:%1").arg(s.audioIndex)};
-    if (!s.filter.isEmpty())
-        a << "-af" << s.filter;
+    QStringList a{"-hide_banner", "-loglevel", "level+info", "-n"};
+    if (!s.graph.isEmpty()) {
+        // A graph plan compiled for one output: every source is read in real time.
+        if (!s.graph.value("error").toString().isEmpty())
+            return fail(s.graph.value("error").toString());
+        const auto pads = s.graph.value("outputs").toMap();
+        if (pads.isEmpty())
+            return fail(QStringLiteral("Connect a graph output first"));
+        for (const auto &arg : s.graph.value("inputs").toStringList()) {
+            if (arg == u"-i")
+                a << "-re";
+            a << arg;
+        }
+        a << "-filter_complex" << s.graph.value("filter").toString() << "-map"
+          << u'[' + pads.first().toString() + u']';
+    } else {
+        a << "-re" << "-i" << s.input << "-map" << QStringLiteral("0:a:%1").arg(s.audioIndex);
+        if (!s.filter.isEmpty())
+            a << "-af" << s.filter;
+    }
     a << "-c:a" << codec << "-b:a" << QString::number(s.bitrate) + u'k' << "-progress" << "pipe:1"
       << "-nostats";
     if (s.protocol == u"icecast")

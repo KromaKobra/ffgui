@@ -5,7 +5,8 @@ import FFgui.Controls
 import FFgui.Theme
 
 // One audio track of an input: codec, rate, depth, bitrate, layout icon,
-// language and a star for the default track.
+// language and a star for the default track. Drag it into the Chain to route
+// it (the Chain reads "input:track:audioIndex").
 SelectableRow {
     id: row
 
@@ -14,6 +15,12 @@ SelectableRow {
     required property var track
 
     Layout.fillWidth: true
+    Drag.dragType: Drag.Automatic
+    Drag.supportedActions: Qt.CopyAction
+    Drag.active: trackDrag.active
+    Drag.mimeData: ({ "application/x-ffgui-track": [row.inputIndex, row.trackIndex, row.track.audioIndex].join(":") })
+    // Sideways only: vertical drags keep scrolling the Sources list.
+    DragHandler { id: trackDrag; target: null; yAxis.enabled: false }
     selected: App.selection.kind === "track" && App.selection.index === row.inputIndex
               && App.selection.track === row.trackIndex
     onClicked: {

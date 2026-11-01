@@ -299,7 +299,15 @@ void CompareState::run(int mode, int a, int b)
                                           : first->tracks[first->defaultTrack()].audioIndex);
     spec.trackB = mode == 0 ? spec.trackA : second->tracks[second->defaultTrack()].audioIndex;
     spec.offset = m_offset;
-    if (mode == 0) {
+    if (mode == 0 && p->graphActive()) {
+        // The selected output's branch of the graph is B.
+        spec.graphB = p->graphPlan(p->outputs()->value(std::max(0, p->currentOutput()), "uid").toString());
+        if (!spec.graphB.value("error").toString().isEmpty()) {
+            m_error = spec.graphB.value("error").toString();
+            emit changed();
+            return;
+        }
+    } else if (mode == 0) {
         const auto chain = ChainCompiler::compile(p->steps()->rows(), m_app->catalog()->catalog(), {},
                                                   first->tracks[first->defaultTrack()].channels, true);
         if (!chain.error.isEmpty()) {
@@ -443,16 +451,23 @@ void StreamState::start(int row)
         m_app->toast(tr("Add a readable input first"));
         return;
     }
-    auto chain = ChainCompiler::compile(p->steps()->rows(), m_app->catalog()->catalog(), {},
-                                        p->track().value("channels", 2).toInt());
+    auto chain = p->graphActive() ? ChainResult()
+                                  : ChainCompiler::compile(p->steps()->rows(), m_app->catalog()->catalog(), {},
+                                                           p->track().value("channels", 2).toInt());
     if (!chain.error.isEmpty()) {
         model->update(row, {{"status", "error"}, {"error", chain.error}});
         return;
     }
-    auto *job = new StreamOut({probe->path, chain.filter, item.value("protocol").toString(),
-                               item.value("url").toString(), p->track().value("audioIndex").toInt(),
-                               item.value("kbps", 128).toInt()},
-                              m_app->logStore(), this);
+    StreamSpec spec{probe->path,
+                    chain.filter,
+                    item.value("protocol").toString(),
+                    item.value("url").toString(),
+                    p->track().value("audioIndex").toInt(),
+                    item.value("kbps", 128).toInt()};
+    // A graph streams the selected output's branch.
+    if (p->graphActive())
+        spec.graph = p->graphPlan(p->outputs()->value(std::max(0, p->currentOutput()), "uid").toString());
+    auto *job = new StreamOut(spec, m_app->logStore(), this);
     m_jobs.insert(id, job);
     model->update(row, {{"status", "connecting"}, {"error", QString()}, {"history", QVariantList()}});
     connect(job, &StreamOut::reading, this, [this, id](double bitrate) {
