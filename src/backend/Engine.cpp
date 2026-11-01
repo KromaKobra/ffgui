@@ -1,5 +1,11 @@
 #include "Engine.h"
 #include "App.h"
+#include "FormatApi.h"
+#include <probe/Prober.h>
+#include <tools/ShellQuote.h>
+#include <QCryptographicHash>
+#include <QJsonDocument>
+#include <QFileInfo>
 
 #include <caps/CapabilityProbe.h>
 #include <log/LogStore.h>
@@ -28,9 +34,72 @@ QVariantMap channelStatsMap(const analysis::ChannelStats &c)
 Engine::Engine(App *app)
     : QObject(app)
     , m_app(app)
+    , m_graphProbe(app->logStore())
+    , m_renderQueue(app->logStore())
     , m_player(app->logStore())
 {
     Project *project = app->project();
+    m_chainTimer.setSingleShot(true);
+    m_chainTimer.setInterval(300);
+    connect(&m_chainTimer, &QTimer::timeout, this, &Engine::updateChain);
+    for (auto signal : { &Project::chainChanged, &Project::outputsChanged, &Project::currentOutputChanged })
+        connect(project, signal, this, [this] { m_graphProbe.cancel(); updateBlockers(); m_chainTimer.start(); });
+    connect(project, &Project::paramEdited, this, &Engine::liveParam);
+    connect(project, &Project::selectionActionRequested, this, [this](const QString &action, double start, double end) {
+        if (action != u"normalize") return;
+        const auto stats = m_app->analysis()->rangeStats();
+        const double lufs = stats.value(QStringLiteral("lufs"), NAN).toDouble();
+        if (!std::isfinite(lufs) || stats.value(QStringLiteral("start")).toDouble() != start || stats.value(QStringLiteral("end")).toDouble() != end) {
+            m_normalizeRange = { start, end };
+            measureRange(start, end);
+            return;
+        }
+        m_app->project()->addRangedStep(QStringLiteral("gain"), { { "volume", -16-lufs } }, start, end);
+    });
+    connect(app->render(), &Render::startRequested, this, &Engine::startRender);
+    connect(app->render(), &Render::enqueueRequested, this, &Engine::enqueue);
+    connect(app->render(), &Render::stopRequested, &m_renderQueue, &RenderQueue::stopAll);
+    connect(app->queue(), &QueueModel::actionRequested, &m_renderQueue, &RenderQueue::action);
+    connect(&m_renderQueue, &RenderQueue::changed, this, &Engine::syncQueue);
+    connect(&m_renderQueue, &RenderQueue::completed, this, [this](const RenderTask &task) {
+        if (task.status == u"done") m_app->toast(tr("Rendered %1").arg(QFileInfo(task.output).fileName()), QStringLiteral("success"), tr("Open"), QStringLiteral("open:") + task.output);
+        else if (task.status == u"failed") m_app->toast(task.error, QStringLiteral("error"));
+        m_foreground.remove(task.uid);
+    });
+    connect(app->media()->processed(), &MediaState::decoded, this, [this](const QString &, bool ok) {
+        if (!ok) return;
+        const auto data = m_app->media()->processed()->data();
+        if (!data || !data->finished()) return;
+        double peak = 0;
+        for (int c = 0; c < m_app->media()->processed()->channels(); ++c) {
+            const auto p = data->peakRange(c, 0, m_app->project()->duration());
+            peak = std::max(peak, double(std::max(std::abs(p.min), std::abs(p.max))));
+        }
+        auto *steps = m_app->project()->steps();
+        int last = -1;
+        for (int i = 0; i < steps->count(); ++i) if (!steps->value(i, QStringLiteral("bypass")).toBool()) last = i;
+        if (last >= 0 && peak > 1) steps->update(last, { { "warning", tr("clips +%1 dB").arg(20*std::log10(peak), 0, 'f', 1) } });
+    });
+    connect(&m_graphProbe, &GraphProbe::finished, this, [this](const NegotiatedGraph &graph) {
+        if (!graph.error.isEmpty()) return;
+        QList<QVariantMap> rows;
+        QVariantMap converter;
+        FormatApi format;
+        for (auto node : graph.nodes) {
+            const auto from = node.value(QStringLiteral("from")).toMap(), to = node.value(QStringLiteral("to")).toMap();
+            node.insert(QStringLiteral("detail"), format.signal(from) + QStringLiteral(" → ") + format.signal(to));
+            node.insert(QStringLiteral("x"), double(rows.size())*180); node.insert(QStringLiteral("y"), 50);
+            node.insert(QStringLiteral("bypass"), false);
+            rows << node;
+            if (node.value(QStringLiteral("kind")).toString() == u"auto") converter = { { "filter", node.value(QStringLiteral("label")) }, { "from", from }, { "to", to }, { "reason", tr("FFmpeg inserts this conversion") } };
+            for (int i = 0; i < m_app->project()->steps()->count(); ++i) {
+                const QString uid = m_app->project()->steps()->value(i, QStringLiteral("uid")).toString();
+                if (node.value(QStringLiteral("uid")).toString().endsWith(u'_' + uid))
+                    m_app->project()->steps()->update(i, { { "formatIn", format.signal(from) }, { "formatOut", format.signal(to) }, { "formatChanged", from != to } });
+            }
+        }
+        m_app->project()->setNegotiated(rows, converter);
+    });
     connect(project, &Project::currentInputChanged, this, &Engine::currentChanged);
     connect(project, &Project::currentTrackChanged, this, &Engine::currentChanged);
     connect(project, &Project::inputChanged, this, &Engine::currentChanged);
@@ -62,6 +131,7 @@ Engine::Engine(App *app)
     connect(transport, &Transport::speedChanged, this, [this] { m_player.setSpeed(m_app->transport()->speed()); });
     connect(transport, &Transport::volumeChanged, this, [this] { m_player.setVolume(m_app->transport()->volume()); });
     connect(transport, &Transport::soloMaskChanged, this, &Engine::applySolo);
+    connect(transport, &Transport::abChanged, this, [this] { m_player.setProcessed(m_app->transport()->ab() == u"processed"); scheduleIdleMeters(); });
     m_player.setVolume(transport->volume());
     connect(&m_player, &PlaybackEngine::playingChanged, this, [this](bool playing) {
         if (!playing)
@@ -92,6 +162,9 @@ Engine::Engine(App *app)
 Engine::~Engine()
 {
     m_player.stop();
+    m_graphProbe.cancel();
+    disconnect(&m_renderQueue, nullptr, this, nullptr);
+    m_renderQueue.stopAll();
 }
 
 void Engine::start()
@@ -126,6 +199,10 @@ void Engine::refreshCaps(bool useCache)
                     s.libraries << QVariantMap { { "name", lib.name }, { "found", lib.found }, { "unlocks", lib.unlocks },
                                                  { "kind", QStringLiteral("library") } };
                 m_app->caps()->apply(s);
+                m_build = info;
+                m_app->catalog()->setCapabilities(info);
+                updateBlockers();
+                m_chainTimer.start();
             });
     probe->run(useCache);
 }
@@ -153,6 +230,10 @@ void Engine::currentChanged()
             m_pass->cancel();
         m_app->analysis()->reset();
         m_app->media()->clear();
+        m_app->media()->processed()->clear();
+        m_app->project()->setNegotiated({}, {});
+        m_processedFilter.clear();
+        m_app->transport()->setAbAvailability(false, tr("Add an input to compare"));
         m_app->meters()->resetAll();
         // A row that is still being read keeps its length for the ruler.
         m_app->transport()->setDuration(project->duration());
@@ -166,6 +247,7 @@ void Engine::currentChanged()
         return;
     m_key = key;
     m_uid = uid;
+    m_normalizeRange = { -1, -1 };
     const bool live = probe->duration <= 0;
 
     Transport *transport = m_app->transport();
@@ -185,6 +267,8 @@ void Engine::currentChanged()
     m_app->meters()->resetAll();
     m_player.setSource({ probe->path, track.audioIndex, track.channels, track.sampleRate, track.channelNames, probe->duration });
     applySolo();
+    m_processedFilter.clear();
+    m_chainTimer.start();
 
     if (m_pass)
         m_pass->cancel();
@@ -357,25 +441,182 @@ void Engine::measureRange(double start, double end)
         if (std::isfinite(r.phaseMean))
             stats.insert(QStringLiteral("correlation"), r.phaseMean);
         m_app->analysis()->setRangeStats(stats);
+        if (m_normalizeRange == QPair<double,double>(start,end)) {
+            m_normalizeRange = { -1, -1 };
+            const double lufs = stats.value(QStringLiteral("lufs"), NAN).toDouble();
+            if (std::isfinite(lufs)) {
+                m_app->project()->addRangedStep(QStringLiteral("gain"), { { "volume", -16-lufs } }, start, end);
+            } else m_app->toast(tr("This range is too short or quiet to normalize"));
+        }
     });
     pass->start();
 }
 
+QVariantMap Engine::renderTrack() const
+{
+    auto track = m_app->project()->track();
+    const auto *probe = m_app->project()->probe(m_app->project()->currentInput());
+    track.insert(QStringLiteral("coverStream"), probe ? probe->coverStream : -1);
+    return track;
+}
+
 void Engine::updateBlockers()
 {
-    Project *project = m_app->project();
+    auto *project = m_app->project();
     QString blocker;
-    if (!project->hasInput())
-        blocker = tr("Add an input first");
-    else if (project->input().value(QStringLiteral("probing")).toBool())
-        blocker = tr("Reading the input…");
-    else if (project->outputs()->count() == 0)
-        blocker = tr("Choose a format first");
+    if (!project->hasInput()) blocker = tr("Add an input first");
+    else if (project->input().value(QStringLiteral("probing")).toBool()) blocker = tr("Reading the input…");
+    else if (!project->probe(project->currentInput()) || project->track().isEmpty()) blocker = tr("Choose a readable audio track");
+    else if (!project->outputs()->count()) blocker = tr("Choose a format first");
+    else if (m_app->caps()->state() != u"ready") blocker = tr("Waiting for FFmpeg");
+    if (blocker.isEmpty()) {
+        const auto command = CommandBuilder::build(project->probe(project->currentInput())->path, project->track().value(QStringLiteral("audioIndex")).toInt(), renderTrack(), project->duration(), project->steps()->rows(), project->outputs()->rows(), m_app->catalog()->catalog(), m_build);
+        blocker = command.error;
+        if (blocker.isEmpty()) m_app->command()->set(command.args, command.groups);
+        else m_app->command()->clear(blocker);
+    } else m_app->command()->clear(blocker);
     m_app->render()->setBlocker(blocker);
-    if (!project->hasInput())
-        m_app->command()->clear(tr("Add an input to build a command"));
-    else if (project->outputs()->count() == 0)
-        m_app->command()->clear(tr("Choose a format to build a command"));
+}
+
+void Engine::updateChain()
+{
+    auto *p = m_app->project();
+    const auto *probe = p->probe(p->currentInput());
+    if (!probe || p->shownTrack() < 0) return;
+    const auto &track = probe->tracks[p->shownTrack()];
+    for (const auto &node : p->steps()->rows()) {
+        const auto spec = m_app->catalog()->step(node.value(QStringLiteral("type")).toString());
+        m_app->catalog()->filterOptions(spec.value(QStringLiteral("primaryFilter")).toString());
+    }
+    const auto chain = ChainCompiler::compile(p->steps()->rows(), m_app->catalog()->catalog(), m_build, track.channels, true);
+    auto *t = m_app->transport();
+    QList<double> markers;
+    for (const auto &c : probe->chapters) markers << c.start;
+    for (const auto &m : p->markers()) markers << m.value(QStringLiteral("start")).toDouble();
+    t->setMarkers(markers);
+    t->setAbAvailability(chain.error.isEmpty() && !chain.filter.isEmpty() && chain.alignment,
+        !chain.error.isEmpty() ? chain.error : !chain.alignment ? tr("Speed changes prevent aligned A/B") : tr("Add a step to compare"));
+    double target = NAN;
+    for (const auto &s : p->steps()->rows())
+        if (s.value(QStringLiteral("type")).toString() == u"loudnorm" && !s.value(QStringLiteral("bypass")).toBool()) target = s.value(QStringLiteral("params")).toMap().value(QStringLiteral("I"), -16).toDouble();
+    m_app->meters()->setTarget(target);
+    if (!chain.error.isEmpty()) {
+        m_player.setProcessedFilter({});
+        m_app->media()->processed()->clear();
+        m_processedFilter.clear();
+    }
+    if (chain.error.isEmpty() && chain.filter != m_processedFilter) {
+        m_processedFilter = chain.filter;
+        m_player.setProcessedFilter(chain.filter, chain.filter == m_liveFilter);
+        m_liveFilter.clear();
+        if (chain.filter.isEmpty()) m_app->media()->processed()->clear();
+        else if (probe->duration > 0) {
+            const QString hash = QString::fromLatin1(QCryptographicHash::hash(chain.filter.toUtf8(), QCryptographicHash::Sha256).toHex());
+            m_app->media()->processed()->show(m_key + u':' + hash, { probe->path, track.audioIndex, track.channels, track.sampleRate, probe->duration, chain.filter });
+        }
+    }
+    if (!p->outputs()->count()) { p->setNegotiated({}, {}); return; }
+    const auto advice = CopyAdvisor::advise(p->track(), p->outputs()->get(p->currentOutput()), p->steps()->rows(), m_app->catalog()->catalog());
+    if (advice.copy) {
+        p->setNegotiated({ { { "uid", QStringLiteral("copy") }, { "kind", QStringLiteral("copy") }, { "label", tr("Stream copy") }, { "detail", tr("Audio packets pass through unchanged") }, { "x", 0.0 }, { "y", 50.0 }, { "inputs", 1 }, { "outputs", 1 }, { "bypass", false } } }, {});
+        return;
+    }
+    const auto full = ChainCompiler::compile(p->steps()->rows(), m_app->catalog()->catalog(), m_build, track.channels);
+    if (full.error.isEmpty()) m_graphProbe.run(probe->path, track.audioIndex, full.filter, p->outputs()->get(p->currentOutput()));
+}
+
+void Engine::liveParam(int index, const QString &key, const QVariant &v)
+{
+    const auto row = m_app->project()->steps()->get(index);
+    const auto spec = m_app->catalog()->step(row.value(QStringLiteral("type")).toString());
+    if (!spec.value(QStringLiteral("builder")).toString().isEmpty()) return;
+    const QString filter = spec.value(QStringLiteral("primaryFilter")).toString();
+    const auto all = m_app->catalog()->filterOptions(filter);
+    bool runtime = false;
+    for (const auto &o : all) if (o.toMap().value(QStringLiteral("key")) == key) runtime = o.toMap().value(QStringLiteral("runtime")).toBool();
+    if (!runtime) return;
+    QString value = v.metaType().id() == QMetaType::Bool ? (v.toBool() ? QStringLiteral("1") : QStringLiteral("0")) : v.toString();
+    if (spec.value(QStringLiteral("template")).toString().contains(u'{' + key + QStringLiteral("}dB"))) value += QStringLiteral("dB");
+    if (m_player.sendLiveCommand(filter + u'@' + row.value(QStringLiteral("uid")).toString(), key, value))
+        m_liveFilter = ChainCompiler::compile(m_app->project()->steps()->rows(), m_app->catalog()->catalog(), m_build, m_player.source().channels, true).filter;
+}
+
+void Engine::startRender(const QString &scope)
+{
+    auto *p = m_app->project();
+    const auto *probe = p->probe(p->currentInput());
+    if (!probe) return;
+    const bool selection = scope == u"selection";
+    if (selection && !m_app->selection()->isRange()) { m_app->toast(tr("Select a range first")); return; }
+    RenderTask task;
+    task.input = probe->path;
+    task.command = CommandBuilder::build(probe->path, p->track().value(QStringLiteral("audioIndex")).toInt(), renderTrack(), p->duration(), p->steps()->rows(), p->outputs()->rows(), m_app->catalog()->catalog(), m_build,
+        selection ? m_app->selection()->start() : -1, selection ? m_app->selection()->end() : -1);
+    if (!task.command.error.isEmpty()) { m_app->toast(task.command.error, QStringLiteral("error")); return; }
+    task.output = task.command.paths.value(0);
+    m_foreground.insert(task.uid);
+    m_renderQueue.add({ task });
+}
+
+void Engine::syncQueue()
+{
+    QList<QVariantMap> rows;
+    double progress = 0, speed = 0, eta = 0;
+    int count = 0;
+    QString label;
+    for (const auto &task : m_renderQueue.tasks()) {
+        rows << QVariantMap { { "uid", task.uid }, { "file", QFileInfo(task.input).fileName() }, { "output", QFileInfo(task.output).fileName() }, { "status", task.status == u"failed" ? QStringLiteral("error") : task.status }, { "progress", task.progress }, { "speed", task.speed > 0 ? QStringLiteral("%1×").arg(task.speed, 0, 'f', 1) : QString() }, { "eta", task.eta }, { "error", task.error }, { "command", task.command.groups.join(u' ') } };
+        if (m_foreground.contains(task.uid)) {
+            ++count; progress += task.progress; speed = task.speed; eta += task.eta;
+            label = QFileInfo(task.output).fileName();
+        }
+    }
+    // Keep existing rows/delegates while progress changes.
+    auto *model = m_app->queue();
+    for (int i = 0; i < rows.size(); ++i) {
+        const int existing = model->find(QStringLiteral("uid"), rows[i].value(QStringLiteral("uid")));
+        if (existing < 0) model->insertAt(i, rows[i]);
+        else { if (existing != i) model->move(existing, i); model->update(i, rows[i]); }
+    }
+    while (model->count() > rows.size()) model->removeAt(model->count()-1);
+    model->setPaused(m_renderQueue.paused());
+    m_app->render()->setActive(count > 0, count, label);
+    if (count > 0) m_app->render()->setProgress(progress/count, speed, eta);
+}
+
+void Engine::enqueue()
+{
+    auto *p = m_app->project();
+    const auto nodes = p->steps()->rows(), outputs = p->outputs()->rows();
+    const auto catalog = m_app->catalog()->catalog();
+    // Probe each batch member, rather than applying the first file's format
+    // and duration to a heterogeneous folder. Serial probing bounds memory.
+    auto files = std::make_shared<QStringList>();
+    for (int i = 0; i < p->inputs()->count(); ++i) {
+        const auto folder = p->inputFiles(i);
+        if (folder.isEmpty()) *files << p->inputs()->value(i, QStringLiteral("path")).toString();
+        else *files << folder;
+    }
+    auto next = std::make_shared<std::function<void()>>();
+    const std::weak_ptr<std::function<void()>> weakNext = next;
+    *next = [this, files, nodes, outputs, catalog, weakNext] {
+        if (files->isEmpty()) return;
+        const QString path = files->takeFirst();
+        auto *probe = new Prober(path, m_app->logStore(), this);
+        auto keepNext = weakNext.lock();
+        connect(probe, &Prober::finished, this, [this, probe, path, nodes, outputs, catalog, keepNext](bool ok, const ProbeResult &result, const QString &error, const QStringList &) {
+            probe->deleteLater();
+            if (ok && !result.tracks.isEmpty()) {
+                const auto &track = result.tracks[result.defaultTrack()];
+                QVariantMap format { { "codec", track.codec }, { "rate", track.sampleRate }, { "depth", track.bitsPerSample }, { "channels", track.channels }, { "audioIndex", track.audioIndex }, { "coverStream", result.coverStream } };
+                m_renderQueue.add(BatchExpander::expand({ path }, format, result.duration, nodes, outputs, catalog, m_build));
+            } else m_app->toast(tr("Skipping %1: %2").arg(path, error), QStringLiteral("error"));
+            if (keepNext) (*keepNext)();
+        });
+        probe->start();
+    };
+    (*next)();
+    m_app->requestPanel(QStringLiteral("queue"));
 }
 
 // ----------------------------------------------------------------------------
@@ -385,6 +626,7 @@ void Engine::playingChanged()
 {
     Transport *t = m_app->transport();
     if (t->playing() && !m_player.playing()) {
+        if (t->position() < m_app->project()->keptStart() || t->position() >= m_app->project()->keptEnd()) t->seek(m_app->project()->keptStart());
         if (!m_player.play(t->position())) {
             t->setPlaying(false);
             return;
@@ -426,6 +668,11 @@ void Engine::tick()
         return;
     double pos = m_player.position();
     Selection *sel = m_app->selection();
+    if (pos >= m_app->project()->keptEnd() && m_app->project()->keptEnd() > 0) {
+        if (t->loop()) t->seek(m_app->project()->keptStart());
+        else { t->setPosition(m_app->project()->keptEnd()); t->pause(); }
+        return;
+    }
     if (t->loop() && sel->isRange() && pos >= sel->end()) {
         t->seek(sel->start());
         return;
@@ -486,7 +733,7 @@ void Engine::idleMeters()
     if (m_player.playing())
         return;
     // Stopped: the values at the playhead.
-    MediaState *media = m_app->media();
+    MediaState *media = m_app->transport()->ab() == u"processed" && m_app->media()->processed()->ready() ? m_app->media()->processed() : m_app->media();
     Analysis *analysis = m_app->analysis();
     const double t = m_app->transport()->position();
     Meters::Reading r;

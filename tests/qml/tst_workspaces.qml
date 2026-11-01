@@ -24,7 +24,11 @@ TestCase {
         if (testEnv.loadFixture !== "") {
             App.project.addFiles(["file://" + testEnv.loadFixture]);
             tryVerify(() => App.analysis.state === "done" && App.media.ready && !App.media.loading, 30000);
-            App.selection.select("input", { index: 0 });
+            App.project.applyChainPreset("Podcast voice");
+            App.project.addOutput("Podcast MP3");
+            App.view.setLayer("processed", true);
+            tryVerify(() => App.media.processed.ready && !App.media.processed.loading && App.project.graph.count > 0, 20000);
+            App.selection.select("step", { index: 0 });
         }
     }
 
@@ -39,7 +43,20 @@ TestCase {
             skip("FFGUI_SCREENSHOT_DIR is not set");
         test.win.workspaces.switchTo(data.name);
         wait(500);                      // let the dock's layout animation finish
+        if (App.media.processed.ready) {
+            App.view.setLayer("processed", true);
+            wait(50);
+            verify(App.view.layers.processed === true);
+        }
+        // Capture a newly rendered frame, including deferred layouts and
+        // scene items that became visible with the workspace's layers.
+        test.win.update();
+        verify(waitForRendering(test.win.contentItem, 2000));
         const file = testEnv.screenshotDir + "/ffgui-" + data.name.toLowerCase().replace(/[^a-z]+/g, "-") + ".png";
+        // Let deferred controls settle through the software readback before export.
+        grabImage(test.win.contentItem);
+        test.win.update();
+        verify(waitForRendering(test.win.contentItem, 2000));
         grabImage(test.win.contentItem).save(file);
     }
 }

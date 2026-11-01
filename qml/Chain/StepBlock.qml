@@ -8,6 +8,7 @@ import FFgui.Theme
 // call out clipping and other problems where they happen.
 Rectangle {
     id: block
+    objectName: "chainStep" + block.index
 
     required property int index
     required property string type
@@ -22,6 +23,8 @@ Rectangle {
     required property string warning
     required property bool available
 
+    signal reorderRequested(real distance)
+
     readonly property bool selected: App.selection.kind === "step" && App.selection.index === block.index
 
     width: Metrics.stepWidth
@@ -32,7 +35,16 @@ Rectangle {
     border.color: block.selected ? Theme.accent : !block.available ? Theme.warn : Theme.blockBorder
 
     HoverHandler { id: blockHover }
-    TapHandler { onTapped: App.selection.select("step", { index: block.index }) }
+    MouseArea {
+        anchors.fill: parent
+        property real pressX: 0
+        cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+        onPressed: mouse => { pressX = mouse.x; }
+        onReleased: mouse => {
+            if (Math.abs(mouse.x - pressX) > 24) block.reorderRequested(mouse.x - pressX);
+            else App.selection.select("step", { index: block.index });
+        }
+    }
 
     Item {
         anchors.fill: parent

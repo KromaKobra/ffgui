@@ -13,10 +13,11 @@ double toDb(double v)
 }
 }
 
-MediaState::MediaState(LogStore *log, QObject *parent)
+MediaState::MediaState(LogStore *log, QObject *parent, bool withProcessed)
     : QObject(parent)
     , m_log(log)
 {
+    if (withProcessed) m_processed = new MediaState(log, this, false);
 }
 
 MediaState::~MediaState() = default;
@@ -163,6 +164,7 @@ double MediaState::spectrumAt(int channel, double t, double hz) const
 
 void MediaState::requestWindow(double t0, double t1)
 {
+    if (m_processed && m_processed->ready()) m_processed->requestWindow(t0,t1);
     if (m_window && m_data && !m_data->windowCovers(t0, t1))
         m_window->request(t0, t1);
 }

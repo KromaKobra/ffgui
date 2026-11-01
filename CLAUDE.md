@@ -1,5 +1,7 @@
 # ffgui: notes for working in this repo
 
+Status and the remaining phases: `docs/HANDOFF.md` (read it first).
+
 ## Commands
 
 - Build: `cmake --preset dev && cmake --build --preset dev`

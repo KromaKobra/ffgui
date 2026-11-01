@@ -15,6 +15,7 @@ QStringList PcmReader::decodeArgs(const Source &s, double start, double length)
 {
     QStringList args { QStringLiteral("-hide_banner"), QStringLiteral("-nostdin"),
                        QStringLiteral("-loglevel"), QStringLiteral("level+error") };
+    if (start > 0 && !s.filter.isEmpty()) args << QStringLiteral("-copyts");
     if (start > 0)
         args << QStringLiteral("-ss") << QString::number(start, 'f', 6);
     if (length > 0)
@@ -26,6 +27,10 @@ QStringList PcmReader::decodeArgs(const Source &s, double start, double length)
          << QStringLiteral("-ar") << QString::number(s.sampleRate)
          << QStringLiteral("-c:a") << QStringLiteral("pcm_f32le")
          << QStringLiteral("-f") << QStringLiteral("f32le") << QStringLiteral("pipe:1");
+    if (!s.filter.isEmpty()) {
+        const int pos = args.indexOf(QStringLiteral("-ac"));
+        args.insert(pos, QStringLiteral("-af")); args.insert(pos+1, s.filter);
+    }
     return args;
 }
 

@@ -41,11 +41,14 @@ Item {
                         required property string name
                         required property string codecLabel
                         required property string description
+                        required property bool available
+                        required property string reason
+                        enabled: available
                         required property bool builtIn
                         Layout.fillWidth: true
                         text: name + "   ·   " + codecLabel + (builtIn ? "" : "   " + qsTr("(yours)"))
                         highlighted: App.project.outputs.value(App.project.currentOutput, "preset") === name
-                        tip: description
+                        tip: available ? description : reason
                         onClicked: {
                             if (App.project.outputs.count === 0)
                                 App.project.addOutput(name);
@@ -60,9 +63,12 @@ Item {
                     delegate: FfItemDelegate {
                         required property string name
                         required property string description
+                        required property bool available
+                        required property string reason
+                        enabled: available
                         Layout.fillWidth: true
                         text: name
-                        tip: description
+                        tip: available ? description : reason
                         onClicked: App.project.applyChainPreset(name)
                     }
                 }

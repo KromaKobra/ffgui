@@ -29,6 +29,7 @@ public:
         int channels = 2;
         int sampleRate = 48000;
         double duration = 0;    // seconds, for progress and preallocation; 0 = unknown
+        QString filter;
     };
 
     PcmReader(const Source &source, LogStore *log = nullptr, QObject *parent = nullptr);

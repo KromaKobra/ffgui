@@ -74,6 +74,8 @@ Flickable {
                     rangeEnd: cell.rangeEnd
                     warning: cell.warning
                     available: cell.available
+                    onReorderRequested: distance => App.project.moveStep(cell.index,
+                        Math.max(0, Math.min(flick.stepCount - 1, cell.index + Math.round(distance / cell.width))))
                 }
             }
         }

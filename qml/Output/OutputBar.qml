@@ -84,9 +84,12 @@ Rectangle {
                 delegate: FfButton {
                     required property string name
                     required property string description
+                    required property bool available
+                    required property string reason
+                    enabled: available
                     text: name
                     flat: true
-                    tip: description
+                    tip: available ? description : reason
                     onClicked: App.project.addOutput(name)
                 }
             }

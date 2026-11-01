@@ -20,8 +20,19 @@ probing and a full decode check); the Media View draws the real waveform and
 spectrogram with zoom down to single samples; one ffmpeg analysis pass gives
 loudness, true peak, silence, phase, spectrum, clipping and DC layers, the
 Analysis panel and selection stats; playback (original audio) drives live
-meters, and Open in ffplay plays from the playhead. The chain, outputs and
-rendering come in Phase 2.
+meters, and Open in ffplay plays from the playhead.
+
+Phase 2 (Shape and Deliver) adds capability-gated steps and formats, filter,
+encoder and muxer options from the installed binary's help, an undoable chain
+with drag reordering and time ranges, processed waveforms and synchronized
+original/processed playback. Live filter options update through ffmpeg's stdin;
+other edits restart only the processed decoder. Output presets, naming, signal
+format, command preview and negotiated converters drive real renders, selection
+exports and a batch queue with pause, retry and reordering. Projects save as
+`.ffgui` recipes; user output and chain presets can be saved, imported and exported.
+
+Phase 3 (the remaining tool panels) is next. Playback has been tested silently;
+a listening check on your audio device is still pending.
 
 ## Build and run
 
@@ -61,7 +72,8 @@ ffmpeg` leaves them out.
 ```
 src/core/          ffgui_core: pure C++. tools/ (running ffmpeg), caps/, probe/,
                    media/ (decoding, peak pyramid, spectrogram), analysis/,
-                   dsp/ (loudness), playback/, metadata/, catalog/, log/
+                   dsp/ (loudness), playback/, metadata/, catalog/, log/,
+                   project/ (recipes and undo snapshots), command/, render/
 src/backend/       FFgui.Backend: the App singleton, the Engine that runs the
                    jobs, and the models and scene items QML binds to
 src/app/           main.cpp
@@ -73,7 +85,7 @@ qml/Sources, Media, Meters, Chain, Inspector, Output, Tools/<panel>/
 third_party/Quilt  vendored copy of Quilt (scripts/sync-quilt.sh), never edited
 tests/core         unit tests; parsers run on output captured from ffmpeg 9.0.2
 tests/integration  the real ffmpeg/ffprobe/audio output on generated files
-tests/qml          QuickTest: controls, the shell, loading a real file
+tests/qml          QuickTest: controls, the shell, load/edit/undo/drag/render
 ```
 
 `CLAUDE.md` has the layering rules the import check enforces.

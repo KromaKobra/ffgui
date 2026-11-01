@@ -54,6 +54,8 @@ public:
     void setBackground(bool background);
 
     void start();
+    qint64 writeStdin(const QByteArray &data) { return m_process.write(data); }
+    bool waitForStdin(int timeoutMs) { return m_process.waitForBytesWritten(timeoutMs); }
     // Asks ffmpeg to stop cleanly ("q"), then escalates after graceMs.
     void stop(int graceMs = 1500);
     // Ends it now.

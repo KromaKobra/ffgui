@@ -11,6 +11,7 @@
 #include <QFileInfo>
 #include <QMediaDevices>
 #include <QThread>
+#include <QScopeGuard>
 
 #include <algorithm>
 #include <cmath>
@@ -44,6 +45,7 @@ void PlaybackEngine::setSource(const Source &source)
 {
     stop();
     m_source = source;
+    m_filter.clear();
     m_source.channels = std::clamp(source.channels, 1, kMaxChannels);
     std::vector<std::atomic<float>> gains(size_t(m_source.channels));
     for (auto &g : gains)
@@ -114,6 +116,8 @@ void PlaybackEngine::buildMatrix(int outChannels)
 
 bool PlaybackEngine::play(double position)
 {
+    m_restarting = m_playing;
+    const auto guard = qScopeGuard([this] { m_restarting = false; });
     stop();
     m_error.clear();
     const QAudioDevice device = QMediaDevices::defaultAudioOutput();
@@ -142,6 +146,8 @@ bool PlaybackEngine::play(double position)
     m_ring = std::make_unique<RingBuffer>(size_t(rate) * m_source.channels / 2);
     m_tap = std::make_unique<RingBuffer>(size_t(rate) * m_source.channels / 2);
     m_frame.assign(size_t(kChunkFrames) * m_source.channels, 0.0f);
+    m_frameB.assign(size_t(kChunkFrames) * m_source.channels, 0.0f);
+    m_processedRing = m_filter.isEmpty() ? nullptr : std::make_unique<RingBuffer>(size_t(rate) * m_source.channels / 2);
     m_consumed = 0;
     m_ended = false;
     m_startPosition = std::max(0.0, position);
@@ -173,45 +179,98 @@ void PlaybackEngine::stop()
         m_startPosition = position();
         m_consumed = 0;
         m_playing = false;
-        emit playingChanged(false);
+        if (!m_restarting) emit playingChanged(false);
     }
+}
+
+void PlaybackEngine::setProcessedFilter(const QString &filter, bool appliedLive)
+{
+    if (filter == m_filter) return;
+    m_filter = filter;
+    if (!m_playing || appliedLive) return;
+    // Pause consumption while replacing only the processed decoder. The
+    // original ring retains its next frame, so it stays on the same clock.
+    m_suspendForEdit = true;
+    while (m_callbacks.load() != 0) QThread::usleep(50);
+    const double at = position();
+    m_stopProcessed = true;
+    if (m_processedDecoder) { m_processedDecoder->wait(5000); delete m_processedDecoder; m_processedDecoder = nullptr; }
+    m_processedRing = filter.isEmpty() ? nullptr : std::make_unique<RingBuffer>(size_t(m_format.sampleRate()) * m_source.channels / 2);
+    { const QMutexLocker lock(&m_commandsMutex); m_commands.clear(); }
+    m_stopProcessed = false;
+    m_processedDone = false;
+    if (m_processedRing) {
+        m_processedDecoder = launchDecoder(m_processedRing.get(), true, at);
+        m_processedDecoder->start();
+    }
+    m_suspendForEdit = false;
+}
+
+bool PlaybackEngine::sendLiveCommand(const QString &target, const QString &key, const QString &value)
+{
+    if (!m_playing || !m_processedDecoder) return false;
+    const QMutexLocker lock(&m_commandsMutex);
+    m_commands << (QStringLiteral("c") + target + QStringLiteral(" -1 ") + key + u' ' + value + u'\n').toUtf8();
+    return true;
 }
 
 void PlaybackEngine::startDecoder(double position)
 {
     m_stopDecoder = false;
     m_decoderDone = false;
-    PcmReader::Source s { m_source.input, m_source.audioIndex, m_source.channels, m_format.sampleRate(), 0 };
-    QStringList args = PcmReader::decodeArgs(s, position, 0);
-    if (m_speed != 1.0) {
-        // atempo takes 0.5..2 per instance.
-        QStringList tempo;
-        double left = m_speed;
-        while (left > 2.0) { tempo << QStringLiteral("atempo=2"); left /= 2.0; }
-        while (left < 0.5) { tempo << QStringLiteral("atempo=0.5"); left /= 0.5; }
-        tempo << QStringLiteral("atempo=%1").arg(left, 0, 'f', 4);
-        args.insert(args.indexOf(QStringLiteral("-c:a")), QStringLiteral("-af"));
-        args.insert(args.indexOf(QStringLiteral("-c:a")), tempo.join(u','));
+    m_processedDone = false;
+    m_stopProcessed = false;
+    { const QMutexLocker lock(&m_commandsMutex); m_decodeError.clear(); m_commands.clear(); }
+    m_decoder = launchDecoder(m_ring.get(), false, position);
+    m_decoder->start();
+    if (m_processedRing) {
+        m_processedDecoder = launchDecoder(m_processedRing.get(), true, position);
+        m_processedDecoder->start();
     }
-    RingBuffer *ring = m_ring.get();
+}
+
+QThread *PlaybackEngine::launchDecoder(RingBuffer *ring, bool processed, double position)
+{
+    PcmReader::Source s { m_source.input, m_source.audioIndex, m_source.channels, m_format.sampleRate(), 0 };
+    QStringList filters;
+    if (processed && !m_filter.isEmpty()) filters << m_filter;
+    if (m_speed != 1.0) {
+        double left = m_speed;
+        while (left > 2) { filters << QStringLiteral("atempo=2"); left /= 2; }
+        while (left < 0.5) { filters << QStringLiteral("atempo=0.5"); left /= 0.5; }
+        filters << QStringLiteral("atempo=%1").arg(left, 0, 'f', 4);
+    }
+    s.filter = filters.join(u',');
+    QStringList args = PcmReader::decodeArgs(s, position, 0);
+    args.removeAll(QStringLiteral("-nostdin"));
+    // FFmpeg's threaded pipeline can buffer seconds beyond our PCM ring.
+    // Pace input to the playback clock so live commands affect frames near
+    // the playhead. loudnorm needs a three-second lookahead to prime itself.
+    const int inputAt = args.indexOf(QStringLiteral("-i"));
+    args.insert(inputAt, QStringLiteral("-readrate"));
+    args.insert(inputAt+1, QString::number(m_speed));
+    args.insert(inputAt+2, QStringLiteral("-readrate_initial_burst"));
+    args.insert(inputAt+3, processed && m_filter.contains(QStringLiteral("loudnorm")) ? QStringLiteral("3.1") : QStringLiteral("0.1"));
     const int channels = m_source.channels;
     LogStore *log = m_log;
-    m_decoder = QThread::create([args, ring, channels, log, stopFlag = &m_stopDecoder, done = &m_decoderDone] {
+    auto *done = processed ? &m_processedDone : &m_decoderDone;
+    return QThread::create([this, args, ring, channels, log, processed, done] {
         ProcessJob job(FfTools::paths().ffmpeg, args);
-        job.setLog(log, QStringLiteral("playback"), QStringLiteral("error"));
+        job.setLog(log, processed ? QStringLiteral("playback processed") : QStringLiteral("playback"), QStringLiteral("error"));
         job.start();
         const qint64 frameBytes = qint64(sizeof(float)) * channels;
         QByteArray pending;
-        while (!*stopFlag) {
+        while (!m_stopDecoder && !(processed && m_stopProcessed)) {
+            if (processed) {
+                QList<QByteArray> commands;
+                { const QMutexLocker lock(&m_commandsMutex); commands.swap(m_commands); }
+                for (const auto &command : commands) { job.writeStdin(command); job.waitForStdin(50); }
+            }
             if (job.stdoutAvailable() == 0 && pending.size() < frameBytes) {
-                if (!job.waitForStdout(50) && !job.running() && job.stdoutAvailable() == 0)
-                    break;
+                if (!job.waitForStdout(50) && !job.running() && job.stdoutAvailable() == 0) break;
             }
             const qint64 room = qint64(ring->writable()) * qint64(sizeof(float)) - pending.size();
-            if (room < frameBytes) {
-                QThread::msleep(5);
-                continue;
-            }
+            if (room < frameBytes) { QThread::msleep(5); continue; }
             pending += job.readStdout(std::min(room, job.stdoutAvailable()));
             const qint64 frames = pending.size() / frameBytes;
             if (frames > 0) {
@@ -219,27 +278,32 @@ void PlaybackEngine::startDecoder(double position)
                 pending.remove(0, qsizetype(written * sizeof(float)));
             }
         }
-        if (*stopFlag)
-            job.kill();
+        if (m_stopDecoder || (processed && m_stopProcessed)) job.kill();
         job.waitForFinished(2000);
+        if (!m_stopDecoder && !(processed && m_stopProcessed) && !job.succeeded()) {
+            const QMutexLocker lock(&m_commandsMutex);
+            m_decodeError = job.problems(QStringLiteral("error")).join(u'\n');
+            if (m_decodeError.isEmpty()) m_decodeError = QStringLiteral("Audio decoding failed");
+        }
         *done = true;
     });
-    m_decoder->start();
 }
 
 void PlaybackEngine::stopDecoder()
 {
-    if (!m_decoder)
-        return;
     m_stopDecoder = true;
-    m_decoder->wait(5000);
-    delete m_decoder;
-    m_decoder = nullptr;
+    for (auto **thread : { &m_decoder, &m_processedDecoder }) {
+        if (!*thread) continue;
+        (*thread)->wait(5000); delete *thread; *thread = nullptr;
+    }
 }
 
 void PlaybackEngine::render(float *out, qsizetype samples)
 {
     // The audio thread: no allocation, no locks.
+    m_callbacks.fetch_add(1);
+    const auto callbackGuard = qScopeGuard([this] { m_callbacks.fetch_sub(1); });
+    if (m_suspendForEdit.load()) { std::fill_n(out, samples, 0.0f); return; }
     const int in = m_source.channels, outCh = m_outChannels;
     const qsizetype frames = samples / outCh;
     float gains[kMaxChannels];
@@ -251,7 +315,16 @@ void PlaybackEngine::render(float *out, qsizetype samples)
     qsizetype done = 0;
     while (done < frames) {
         const qsizetype n = std::min(frames - done, kChunkFrames);
-        const qsizetype got = qsizetype(m_ring->read(scratch, size_t(n) * in)) / in;
+        // Consume equal frame counts from both rings. A/B only selects which
+        // samples are heard; both decoders keep advancing on the same clock.
+        size_t available = m_ring->readable() / size_t(in);
+        if (m_processedRing) available = std::min(available, m_processedRing->readable() / size_t(in));
+        const qsizetype got = std::min(n, qsizetype(available));
+        m_ring->read(scratch, size_t(got) * in);
+        if (m_processedRing) {
+            m_processedRing->read(m_frameB.data(), size_t(got) * in);
+            if (m_processed.load(std::memory_order_relaxed)) std::copy_n(m_frameB.data(), size_t(got) * in, scratch);
+        }
         for (qsizetype f = 0; f < got; ++f)
             for (int c = 0; c < in; ++c)
                 scratch[f * in + c] *= gains[c];
@@ -269,7 +342,7 @@ void PlaybackEngine::render(float *out, qsizetype samples)
         }
         std::fill(o + got * outCh, o + n * outCh, 0.0f);
         m_consumed.fetch_add(got, std::memory_order_relaxed);
-        if (got < n && m_decoderDone.load() && m_ring->readable() == 0)
+        if (got < n && ((m_decoderDone.load() && m_ring->readable() == 0) || (m_processedRing && m_processedDone.load() && m_processedRing->readable() == 0)))
             m_ended = true;
         done += n;
     }
@@ -285,6 +358,9 @@ qint64 PlaybackEngine::takeTap(float *out, qint64 maxFrames)
 
 void PlaybackEngine::poll()
 {
+    QString decodeError;
+    { const QMutexLocker lock(&m_commandsMutex); decodeError.swap(m_decodeError); }
+    if (!decodeError.isEmpty()) { stop(); emit error(decodeError); return; }
     if (m_sink && m_sink->error() != QtAudio::NoError) {
         m_error = tr("Audio output error");
         stop();

@@ -3,6 +3,8 @@
 #include "Models.h"
 
 #include <probe/ProbeResult.h>
+#include <project/Recipe.h>
+#include <functional>
 
 #include <QQmlEngine>
 #include <QUndoStack>
@@ -11,6 +13,9 @@
 #include <memory>
 
 class CoverStore;
+class CatalogFacade;
+class Selection;
+class ProjectEdit;
 namespace ffgui { class LogStore; }
 
 // The open project: inputs, the processing chain and the output targets
@@ -48,12 +53,14 @@ class Project : public QObject
     Q_PROPERTY(double keptEnd READ keptEnd NOTIFY chainChanged)
     // The converter ffmpeg inserts before the current output's encoder, if
     // any: { filter, from, to, reason }.
-    Q_PROPERTY(QVariantMap converter READ converter NOTIFY chainChanged)
+    Q_PROPERTY(QVariantMap converter READ converter NOTIFY negotiatedChanged)
     Q_PROPERTY(QString totalSizeText READ totalSizeText NOTIFY outputsChanged)
     Q_PROPERTY(QVariantMap tags READ tags NOTIFY tagsChanged)
 
 public:
     explicit Project(QObject *parent = nullptr);
+
+    ~Project() override;
 
     QString name() const { return m_name; }
     void setName(const QString &name);
@@ -96,6 +103,14 @@ public:
     // Health after a full decode check.
     void setHealth(const QString &uid, const QString &health, const QString &text);
 
+    void setCatalog(CatalogFacade *catalog);
+    void setSelection(Selection *selection) { m_selection = selection; }
+    ffgui::Recipe recipe() const;
+    QStringList inputFiles(int index) const;
+    void refreshDerived();
+    QList<QVariantMap> markers() const { return m_markers; }
+    void setNegotiated(const QList<QVariantMap> &nodes, const QVariantMap &converter);
+
     // Inputs
     Q_INVOKABLE void addFiles(const QList<QUrl> &files);
     Q_INVOKABLE void addFolder(const QUrl &folder);
@@ -116,6 +131,8 @@ public:
     // Appends a step with some parameters set (e.g. a Channel mix from Routing).
     Q_INVOKABLE void addStep(const QString &type, const QVariantMap &params = {});
     Q_INVOKABLE void removeStep(int index);
+    Q_INVOKABLE void cancelPendingRange() { m_pendingRangeStart = m_pendingRangeEnd = 0; }
+    void addRangedStep(const QString &type, const QVariantMap &params, double start, double end);
     Q_INVOKABLE void moveStep(int from, int to);
     Q_INVOKABLE void setBypass(int index, bool bypass);
     Q_INVOKABLE void setParam(int index, const QString &key, const QVariant &value);
@@ -137,6 +154,8 @@ public:
     Q_INVOKABLE void setTag(const QString &key, const QString &value);
     Q_INVOKABLE void removeTag(const QString &key);
 
+    Q_INVOKABLE bool savePreset(const QString &name, bool chain = false);
+
     // Files
     Q_INVOKABLE void newProject();
     Q_INVOKABLE bool open(const QUrl &file);
@@ -153,16 +172,33 @@ signals:
     void inputProbed(const QString &uid, bool ok);
     void inputChanged();
     void chainChanged();
+    void negotiatedChanged();
+    void paramEdited(int index, const QString &key, const QVariant &value);
     void outputsChanged();
     void tagsChanged();
     // For things the project can't do yet, or can't do with this build.
     void notice(const QString &text);
+    void selectionActionRequested(const QString &action, double start, double end);
 
 private:
+    friend class ProjectEdit;
+    QVariantMap snapshot() const;
+    void restoreSnapshot(const QVariantMap &snapshot);
+    void applyRecipe(const ffgui::Recipe &recipe);
+    void editStep(int index, const QVariantMap &changes, const QString &label, const QString &mergeKey = {});
+    QVariantMap makeStep(const QString &type, const QVariantMap &params = {}) const;
+    CatalogFacade *m_catalog = nullptr;
+    Selection *m_selection = nullptr;
+    bool m_editing = false;
+    bool m_derived = false;
+    QList<QVariantMap> m_markers;
+    double m_pendingRangeStart = 0, m_pendingRangeEnd = 0;
+
     struct InputInfo
     {
         std::shared_ptr<ffgui::ProbeResult> probe;
         QStringList files;          // a folder's audio files
+        int epoch = 0;
         int pending = 0;            // probes still running for it
         int failed = 0;
         QString firstError;
@@ -185,6 +221,7 @@ private:
     struct ProbeTask { QString uid, path; bool primary; };
     QList<ProbeTask> m_probeQueue;
     int m_probesRunning = 0;
+    int m_probeEpoch = 0;
     int m_coverVersion = 0;
     int m_currentTrack = -1;
     QString m_name = QStringLiteral("Untitled project");

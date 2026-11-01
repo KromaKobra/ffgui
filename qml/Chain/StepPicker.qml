@@ -22,6 +22,8 @@ Popup {
     focus: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
+    onClosed: App.project.cancelPendingRange()
+
     onOpened: {
         searchField.text = "";
         searchField.forceActiveFocus();
@@ -45,6 +47,7 @@ Popup {
 
         FfTextField {
             id: searchField
+            objectName: "stepSearch"
             Layout.fillWidth: true
             Layout.margins: Metrics.spacing
             placeholderText: qsTr("Search steps: “noise”, “afftdn”, “louder”…")

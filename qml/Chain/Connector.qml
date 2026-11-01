@@ -43,6 +43,7 @@ Item {
     }
     Rectangle {
         id: plus
+        objectName: "addStepAt" + conn.insertAt
         visible: conn.showPlus
         x: conn.width / 2 - 9
         y: conn.height / 2 + 6

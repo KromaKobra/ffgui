@@ -111,6 +111,7 @@ public:
                  const QString &jobId = {});
 
 signals:
+    void selectionStepRequested();
     void panelRequested(const QString &panelId, bool popOut);
     void dialogRequested(const QString &dialogId, const QVariantMap &options);
     void toastRequested(const QString &text, const QString &kind, const QString &actionText,

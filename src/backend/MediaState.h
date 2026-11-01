@@ -18,6 +18,7 @@ class MediaState : public QObject
     QML_NAMED_ELEMENT(Media)
     QML_UNCREATABLE("Owned by App")
 
+    Q_PROPERTY(MediaState *processed READ processed CONSTANT)
     Q_PROPERTY(bool ready READ ready NOTIFY changed)
     Q_PROPERTY(bool loading READ loading NOTIFY changed)
     Q_PROPERTY(bool live READ live NOTIFY changed)
@@ -29,9 +30,10 @@ class MediaState : public QObject
     Q_PROPERTY(int revision READ revision NOTIFY updated)
 
 public:
-    explicit MediaState(ffgui::LogStore *log, QObject *parent = nullptr);
+    explicit MediaState(ffgui::LogStore *log, QObject *parent = nullptr, bool withProcessed = true);
     ~MediaState() override;
 
+    MediaState *processed() const { return m_processed; }
     bool ready() const { return m_data != nullptr; }
     bool loading() const;
     bool live() const { return m_live; }
@@ -76,6 +78,7 @@ private:
     };
     void bump();
 
+    MediaState *m_processed = nullptr;
     ffgui::LogStore *m_log;
     std::map<QString, Entry> m_cache;
     QStringList m_order;                // most recent last

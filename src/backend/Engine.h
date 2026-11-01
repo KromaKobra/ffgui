@@ -1,6 +1,9 @@
 #pragma once
 
 #include <analysis/AnalysisPass.h>
+#include <command/GraphProbe.h>
+#include <command/CommandBuilder.h>
+#include <render/RenderQueue.h>
 #include <dsp/LoudnessMeter.h>
 #include <playback/PlaybackEngine.h>
 
@@ -36,6 +39,20 @@ private:
     void applyClipping();
     void measureRange(double start, double end);
     void updateBlockers();
+    QVariantMap renderTrack() const;
+    void updateChain();
+    void startRender(const QString &scope);
+    void syncQueue();
+    void enqueue();
+    void liveParam(int index, const QString &key, const QVariant &value);
+    ffgui::BuildInfo m_build;
+    ffgui::GraphProbe m_graphProbe;
+    ffgui::RenderQueue m_renderQueue;
+    QSet<QString> m_foreground;
+    QTimer m_chainTimer;
+    QString m_processedFilter;
+    QString m_liveFilter;
+    QPair<double,double> m_normalizeRange { -1, -1 };
 
     void playingChanged();
     void seeked(double position);

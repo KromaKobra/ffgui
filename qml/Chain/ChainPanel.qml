@@ -21,6 +21,10 @@ Item {
     Rectangle { anchors.fill: parent; color: Theme.chainBackground }
 
     StepPicker { id: picker }
+    Connections {
+        target: App
+        function onSelectionStepRequested() { chain.openPicker(chain, App.project.steps.count); }
+    }
 
     ColumnLayout {
         anchors.fill: parent

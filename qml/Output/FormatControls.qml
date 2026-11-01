@@ -14,7 +14,7 @@ RowLayout {
     property var target: ({})
 
     readonly property var containers: App.catalog.containers
-    readonly property var codecs: App.catalog.codecsFor(controls.target.container || "")
+    readonly property var codecs: App.catalog.revision >= 0 ? App.catalog.codecsFor(controls.target.container || "") : []
     readonly property var codec: App.catalog.codec(controls.target.codec || "")
 
     component Field: FfComboBox {

@@ -23,6 +23,7 @@ Item {
     property var clips: []                          // times of clipped samples
     property real dc: NaN                           // linear DC offset of this channel
 
+    readonly property bool showProcessed: App.view.layers.processed === true && App.project.activeSteps > 0 && App.media.processed.ready
     readonly property bool showWave: App.view.layers.waveform === true
     readonly property bool showSpec: App.view.layers.spectrogram === true
     readonly property real share: !lane.showSpec ? 0 : !lane.showWave ? 1 : App.view.spectrogramShare
@@ -56,6 +57,17 @@ Item {
         WaveformItem {
             anchors.fill: parent
             media: App.media
+            channel: lane.dataChannel
+            viewStart: lane.viewStart
+            viewEnd: lane.viewEnd
+            amplitude: lane.amplitude
+            peakColor: lane.showProcessed ? Theme.waveGhost : Theme.wavePeak
+            rmsColor: lane.showProcessed ? Theme.waveGhost : Theme.waveRms
+        }
+        WaveformItem {
+            anchors.fill: parent
+            visible: lane.showProcessed
+            media: App.media.processed
             channel: lane.dataChannel
             viewStart: lane.viewStart
             viewEnd: lane.viewEnd

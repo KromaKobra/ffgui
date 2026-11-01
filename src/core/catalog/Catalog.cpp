@@ -177,36 +177,8 @@ Catalog Catalog::load(const QString &dir, QString *error)
         }
     }
 
-    if (readJson(dir + QStringLiteral("/presets.json"), &root, error)) {
-        for (const QJsonValue &v : root.value(u"output").toArray()) {
-            const QJsonObject o = v.toObject();
-            PresetSpec p;
-            p.kind = QStringLiteral("output");
-            p.name = o.value(u"name").toString();
-            p.description = o.value(u"description").toString();
-            p.container = o.value(u"container").toString();
-            p.codec = o.value(u"codec").toString();
-            p.quality = o.value(u"quality").toDouble();
-            p.rate = o.value(u"rate").toInt();
-            p.depth = o.value(u"depth").toInt();
-            p.channels = o.value(u"channels").toInt();
-            if (!p.name.isEmpty())
-                c.presets << p;
-        }
-        for (const QJsonValue &v : root.value(u"chain").toArray()) {
-            const QJsonObject o = v.toObject();
-            PresetSpec p;
-            p.kind = QStringLiteral("chain");
-            p.name = o.value(u"name").toString();
-            p.description = o.value(u"description").toString();
-            for (const QJsonValue &st : o.value(u"steps").toArray()) {
-                const QJsonObject so = st.toObject();
-                p.steps << ChainStepPreset { so.value(u"type").toString(), so.value(u"params").toObject().toVariantMap() };
-            }
-            if (!p.name.isEmpty())
-                c.presets << p;
-        }
-    }
+    if (readJson(dir + QStringLiteral("/presets.json"), &root, error))
+        c.merge(presetsFromJson(root, dir.startsWith(u':')));
 
     return c;
 }
@@ -248,4 +220,62 @@ const PresetSpec *Catalog::preset(const QString &name) const
     return findBy(presets, name, [](const PresetSpec &s) { return s.name; });
 }
 
+} // namespace ffgui
+
+namespace ffgui {
+Catalog Catalog::presetsFromJson(const QJsonObject &root, bool builtIn)
+{
+    Catalog c;
+        for (const QJsonValue &v : root.value(u"output").toArray()) {
+            const QJsonObject o = v.toObject();
+            PresetSpec p;
+            p.kind = QStringLiteral("output");
+            p.name = o.value(u"name").toString();
+            p.description = o.value(u"description").toString();
+            p.container = o.value(u"container").toString();
+            p.codec = o.value(u"codec").toString();
+            p.quality = o.value(u"quality").toDouble();
+            p.rate = o.value(u"rate").toInt();
+            p.depth = o.value(u"depth").toInt();
+            p.channels = o.value(u"channels").toInt();
+            p.settings = o.value(u"settings").toObject().toVariantMap();
+            if (!p.name.isEmpty())
+                c.presets << p;
+        }
+        for (const QJsonValue &v : root.value(u"chain").toArray()) {
+            const QJsonObject o = v.toObject();
+            PresetSpec p;
+            p.kind = QStringLiteral("chain");
+            p.name = o.value(u"name").toString();
+            p.description = o.value(u"description").toString();
+            for (const QJsonValue &st : o.value(u"steps").toArray()) {
+                const QJsonObject so = st.toObject();
+                p.steps << ChainStepPreset { so.value(u"type").toString(), so.value(u"params").toObject().toVariantMap(), so.value(u"settings").toObject().toVariantMap() };
+            }
+            if (!p.name.isEmpty())
+                c.presets << p;
+        }
+    for (auto &p : c.presets) p.builtIn = builtIn;
+    return c;
+}
+QJsonObject Catalog::presetsJson(bool userOnly) const
+{
+    QJsonArray outputs, chains;
+    for (const auto &p : presets) {
+        if (userOnly && p.builtIn) continue;
+        QJsonObject o { { "name", p.name }, { "description", p.description } };
+        if (p.kind == u"output") {
+            o.insert(QStringLiteral("container"), p.container); o.insert(QStringLiteral("codec"), p.codec);
+            o.insert(QStringLiteral("quality"), p.quality); o.insert(QStringLiteral("rate"), p.rate);
+            o.insert(QStringLiteral("depth"), p.depth); o.insert(QStringLiteral("channels"), p.channels);
+            if (!p.settings.isEmpty()) o.insert(QStringLiteral("settings"), QJsonObject::fromVariantMap(p.settings));
+            outputs << o;
+        } else {
+            QJsonArray steps;
+            for (const auto &step : p.steps) steps << QJsonObject { { "type", step.type }, { "params", QJsonObject::fromVariantMap(step.params) }, { "settings", QJsonObject::fromVariantMap(step.settings) } };
+            o.insert(QStringLiteral("steps"), steps); chains << o;
+        }
+    }
+    return { { "output", outputs }, { "chain", chains } };
+}
 } // namespace ffgui

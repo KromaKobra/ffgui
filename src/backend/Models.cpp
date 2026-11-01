@@ -29,7 +29,7 @@ GraphModel::GraphModel(QObject *parent)
 OutputsModel::OutputsModel(QObject *parent)
     : RowModel({ "uid", "pattern", "fileName", "folder", "preset", "container", "codec", "codecLabel",
                  "quality", "rate", "depth", "channels", "metadata", "kbps", "sizeBytes", "sizeText",
-                 "reencodeReason", "lossyToLossy", "problem" }, parent)
+                 "reencodeReason", "lossyToLossy", "problem", "encoderOptions", "muxerOptions" }, parent)
 {
 }
 
@@ -59,7 +59,7 @@ StepCatalogModel::StepCatalogModel(QObject *parent)
 
 PresetsModel::PresetsModel(QObject *parent)
     : RowModel({ "name", "kind", "description", "builtIn", "container", "codec", "codecLabel",
-                 "quality", "rate", "depth", "channels", "steps" }, parent)
+                 "quality", "rate", "depth", "channels", "steps", "available", "reason" }, parent)
 {
 }
 

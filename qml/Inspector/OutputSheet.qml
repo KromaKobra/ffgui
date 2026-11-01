@@ -15,8 +15,8 @@ ColumnLayout {
     readonly property var target: row.values
     readonly property var codec: App.catalog.codec(sheet.target.codec || "")
     readonly property var container: App.catalog.container(sheet.target.container || "")
-    readonly property var encoderOptions: App.catalog.encoderOptions(sheet.target.codec || "")
-    readonly property var muxerOptions: App.catalog.muxerOptions(sheet.container.muxer || "")
+    readonly property var encoderOptions: App.catalog.revision >= 0 ? App.catalog.encoderOptions(sheet.target.codec || "") : []
+    readonly property var muxerOptions: App.catalog.revision >= 0 ? App.catalog.muxerOptions(sheet.container.muxer || "") : []
 
     function set(changes) { App.project.setOutput(sheet.index, changes); }
 
@@ -105,11 +105,15 @@ ColumnLayout {
         expanded: false
         Repeater {
             model: sheet.encoderOptions
-            delegate: Prop {
+            delegate: ParamControl {
                 required property var modelData
-                key: modelData.key
-                value: String(modelData["default"] ?? "")
-                mono: true
+                option: modelData
+                value: (sheet.target.encoderOptions || {})[modelData.key] ?? modelData["default"]
+                onEdited: v => {
+                    const options = Object.assign({}, sheet.target.encoderOptions || {});
+                    options[modelData.key] = v;
+                    sheet.set({ encoderOptions: options });
+                }
             }
         }
         Hint { text: qsTr("Generated from ffmpeg -h encoder=%1").arg(sheet.target.codec || "") }
@@ -120,11 +124,15 @@ ColumnLayout {
         expanded: false
         Repeater {
             model: sheet.muxerOptions
-            delegate: Prop {
+            delegate: ParamControl {
                 required property var modelData
-                key: modelData.key
-                value: String(modelData["default"] ?? "")
-                mono: true
+                option: modelData
+                value: (sheet.target.muxerOptions || {})[modelData.key] ?? modelData["default"]
+                onEdited: v => {
+                    const options = Object.assign({}, sheet.target.muxerOptions || {});
+                    options[modelData.key] = v;
+                    sheet.set({ muxerOptions: options });
+                }
             }
         }
         Hint { text: qsTr("Generated from ffmpeg -h muxer=%1").arg(sheet.container.muxer || "") }
@@ -144,7 +152,7 @@ ColumnLayout {
             }
         }
         Hint {
-            text: sheet.target.metadata === "copy" ? qsTr("Tags, chapters and cover art are copied from the input.")
+            text: sheet.target.metadata === "copy" ? qsTr("Supported tags, chapters and cover art are copied from the input.")
                   : sheet.target.metadata === "strip" ? qsTr("All metadata is removed.")
                   : qsTr("Tags are set from the Metadata panel.")
         }

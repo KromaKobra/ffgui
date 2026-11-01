@@ -69,8 +69,8 @@ private slots:
         QCOMPARE(option("loudnorm", "TP").defaultValue.toDouble(), -2.0);
         QCOMPARE(option("denoise", "tn").defaultValue.toBool(), false);
         QCOMPARE(option("deesser", "f").max, 1.0);
-        QCOMPARE(option("compressor", "makeup").min, 0.0);   // dB: 1..64 linear is 0..36 dB
-        QCOMPARE(option("compressor", "makeup").max, 36.0);
+        QCOMPARE(option("compressor", "makeup").min, 1.0);   // ffmpeg uses a linear gain
+        QCOMPARE(option("compressor", "makeup").max, 64.0);
     }
 
     void containersReferenceKnownCodecs()

@@ -122,6 +122,8 @@ void ProcessJob::start()
 
 void ProcessJob::stop(int graceMs)
 {
+    if (m_stopRequested)
+        return;
     if (m_process.state() == QProcess::NotRunning)
         return;
     m_stopRequested = true;

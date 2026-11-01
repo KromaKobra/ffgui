@@ -94,6 +94,7 @@ struct ChainStepPreset
 {
     QString type;
     QVariantMap params;
+    QVariantMap settings;
 };
 
 struct PresetSpec
@@ -109,6 +110,7 @@ struct PresetSpec
     int rate = 0;
     int depth = 0;
     int channels = 0;
+    QVariantMap settings;
     // chain
     QList<ChainStepPreset> steps;
 };
@@ -123,6 +125,8 @@ public:
 
     // The catalog compiled into the binary.
     static const Catalog &builtIn();
+    static Catalog presetsFromJson(const QJsonObject &json, bool builtIn = false);
+    QJsonObject presetsJson(bool userOnly = false) const;
 
     // Adds or replaces entries by key/name, e.g. from a user directory.
     void merge(const Catalog &other);

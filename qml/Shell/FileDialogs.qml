@@ -33,6 +33,9 @@ Item {
                 exportAnalysis.open();
                 break;
             case "outputFolder": outputFolder.open(); break;
+            case "savePreset": savePreset.open(); break;
+            case "importPresets": importPresets.open(); break;
+            case "exportPresets": exportPresets.open(); break;
             case "replaceCover": replaceCover.open(); break;
             default:
                 App.toast(qsTr("That isn't available yet"));
@@ -80,13 +83,41 @@ Item {
     FolderDialog {
         id: outputFolder
         title: qsTr("Folder for this output")
-        onAccepted: App.project.setOutput(dialogs.pending.index, { folder: selectedFolder.toString().replace(/^file:\/\//, "") })
+        onAccepted: App.project.setOutput(dialogs.pending.index, { folder: selectedFolder.toString() })
     }
     FileDialog {
         id: replaceCover
         title: qsTr("Cover art")
         nameFilters: [qsTr("Images (*.png *.jpg *.jpeg *.webp)")]
         onAccepted: App.project.setCoverArt(selectedFile)
+    }
+
+    FileDialog {
+        id: importPresets
+        title: qsTr("Import presets")
+        nameFilters: [qsTr("Presets (*.json)")]
+        onAccepted: App.toast(App.catalog.importPresets(selectedFile) ? qsTr("Presets imported") : qsTr("Couldn't import presets"))
+    }
+    FileDialog {
+        id: exportPresets
+        title: qsTr("Export presets")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "json"
+        nameFilters: [qsTr("Presets (*.json)")]
+        onAccepted: App.toast(App.catalog.exportPresets(selectedFile) ? qsTr("Presets exported") : qsTr("Couldn't export presets"))
+    }
+    Dialog {
+        id: savePreset
+        title: qsTr("Save current preset")
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        standardButtons: Dialog.Save | Dialog.Cancel
+        onAccepted: App.toast(App.project.savePreset(presetName.text, presetKind.currentIndex === 1) ? qsTr("Preset saved") : qsTr("Add a name and a chain or output first"))
+        ColumnLayout {
+            FfTextField { id: presetName; placeholderText: qsTr("Preset name"); Layout.fillWidth: true }
+            FfComboBox { id: presetKind; model: [qsTr("Current output"), qsTr("Processing chain")]; Layout.fillWidth: true }
+        }
     }
 
     Dialog {

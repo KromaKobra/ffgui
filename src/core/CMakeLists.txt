@@ -1,6 +1,10 @@
 # ffgui_core: the pure C++ side (QtCore/Gui/Multimedia), no QML. Each folder
 # is small and has its own unit tests under tests/core.
 qt_add_library(ffgui_core STATIC
+    project/Recipe.cpp project/Recipe.h project/SnapshotCommand.h
+    command/CommandBuilder.cpp command/CommandBuilder.h
+    command/GraphProbe.cpp command/GraphProbe.h
+    render/RenderQueue.cpp render/RenderQueue.h
     util/Format.cpp util/Format.h
     catalog/Catalog.cpp catalog/Catalog.h
     tools/FfTools.cpp tools/FfTools.h
@@ -10,6 +14,8 @@ qt_add_library(ffgui_core STATIC
     log/LogStore.cpp log/LogStore.h
     caps/BuildInfo.cpp caps/BuildInfo.h
     caps/CapabilityProbe.cpp caps/CapabilityProbe.h
+    caps/HelpParser.cpp caps/HelpParser.h
+    caps/HelpCache.cpp caps/HelpCache.h
     probe/ChannelLayouts.cpp probe/ChannelLayouts.h
     probe/ProbeResult.h
     probe/ProbeParser.cpp probe/ProbeParser.h

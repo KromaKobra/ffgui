@@ -111,7 +111,7 @@ TestCase {
         tryVerify(() => App.meters.peak[0] <= App.meters.floor, 2000);
     }
 
-    function test_7_layers_and_workspaces_with_data() {
+    function test_7_layers_and_workspaces_live() {
         for (const name of ["Inspect", "Edit", "Master", "Restore", "Default"]) {
             test.win.workspaces.switchTo(name);
             wait(30);
@@ -122,6 +122,50 @@ TestCase {
         App.view.setLayer("grid", true);
         wait(50);
         test.win.workspaces.resetAll();
+    }
+
+    function test_7b_shape_and_deliver() {
+        test.win.workspaces.switchTo("Edit");
+        App.view.chainGraph = false;
+        wait(100);
+        const plus = findChild(test.win.contentItem, "addStepAt0");
+        verify(plus !== null);
+        mouseClick(plus);
+        wait(100);
+        const search = findChild(test.win, "stepSearch");
+        verify(search !== null);
+        search.text = "gain";
+        search.forceActiveFocus();
+        keyClick(Qt.Key_Return);
+        tryCompare(App.project.steps, "count", 1, 2000);
+        compare(App.project.steps.get(0).type, "gain");
+        App.undo.undo();
+        compare(App.project.steps.count, 0);
+        App.undo.redo();
+        compare(App.project.steps.count, 1);
+        App.project.addStep("highpass");
+        wait(50);
+        const block = findChild(test.win.contentItem, "chainStep0");
+        verify(block !== null);
+        mouseDrag(block, 90, 35, 250, 0);
+        tryVerify(() => App.project.steps.get(1).type === "gain", 2000);
+        App.undo.undo();
+        compare(App.project.steps.get(0).type, "gain");
+        App.project.removeStep(1);
+        App.selection.select("step", { index: 0 });
+        App.project.addOutput("Archive FLAC");
+        App.project.setOutput(0, { pattern: "qml-render" });
+        tryVerify(() => App.command.valid && App.render.blocker === "", 10000);
+        tryVerify(() => App.media.processed.ready && !App.media.processed.loading, 15000);
+        compare(App.media.processed.error, "");
+        const render = findChild(test.win.contentItem, "renderAll");
+        verify(render !== null);
+        mouseClick(render);
+        tryVerify(() => App.queue.count > 0 && App.queue.get(App.queue.count - 1).status === "done", 20000);
+        verify(!App.render.active);
+        App.project.removeStep(0);
+        App.project.removeOutput(0);
+        App.selection.clear();
     }
 
     function test_8_removing_clears_everything() {

@@ -1,0 +1,26 @@
+Filter volume
+  Change input volume.
+    Inputs:
+       #0: default (audio)
+    Outputs:
+       #0: default (audio)
+volume AVOptions:
+   volume            <string>     ..F.A....T. set volume adjustment expression (default "1.0")
+   precision         <int>        ..F.A...... select mathematical precision (from 0 to 2) (default float)
+     fixed           0            ..F.A...... select 8-bit fixed-point
+     float           1            ..F.A...... select 32-bit floating-point
+     double          2            ..F.A...... select 64-bit floating-point
+   eval              <int>        ..F.A...... specify when to evaluate expressions (from 0 to 1) (default once)
+     once            0            ..F.A...... eval volume expression once
+     frame           1            ..F.A...... eval volume expression per-frame
+   replaygain        <int>        ..F.A...... Apply replaygain side data when present (from 0 to 3) (default drop)
+     drop            0            ..F.A...... replaygain side data is dropped
+     ignore          1            ..F.A...... replaygain side data is ignored
+     track           2            ..F.A...... track gain is preferred
+     album           3            ..F.A...... album gain is preferred
+   replaygain_preamp <double>     ..F.A...... Apply replaygain pre-amplification (from -15 to 15) (default 0)
+   replaygain_noclip <boolean>    ..F.A...... Apply replaygain clipping prevention (default true)
+
+This filter has support for timeline through the 'enable' option.
+
+Exiting with exit code 0

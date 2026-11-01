@@ -43,6 +43,26 @@ App::App(QQmlEngine *engine, QObject *parent)
     if (engine)
         engine->addImageProvider(QStringLiteral("cover"), new CoverProvider(m_covers));
     m_project->setServices(m_logStore, m_covers);
+    m_catalog->setLog(m_logStore);
+    m_project->setCatalog(m_catalog);
+    m_project->setSelection(m_selection);
+    for (auto entry : { std::pair { static_cast<RowModel *>(m_project->steps()), QStringLiteral("step") },
+                        { static_cast<RowModel *>(m_project->outputs()), QStringLiteral("output") },
+                        { static_cast<RowModel *>(m_project->inputs()), QStringLiteral("input") } }) {
+        connect(entry.first, &QAbstractItemModel::rowsInserted, this, [this, kind = entry.second](const QModelIndex &, int first, int last) {
+            for (int i = first; i <= last; ++i) m_selection->itemInserted(kind, i);
+        });
+        connect(entry.first, &QAbstractItemModel::rowsRemoved, this, [this, kind = entry.second](const QModelIndex &, int first, int last) {
+            for (int i = last; i >= first; --i) m_selection->itemRemoved(kind, i);
+        });
+        connect(entry.first, &QAbstractItemModel::rowsMoved, this, [this, kind = entry.second](const QModelIndex &, int first, int, const QModelIndex &, int destination) {
+            m_selection->itemMoved(kind, first, destination > first ? destination-1 : destination);
+        });
+    }
+    connect(m_project, &Project::selectionActionRequested, this, [this](const QString &action, double, double) {
+        if (action == u"export") m_render->start(QStringLiteral("selection"));
+        if (action == u"step") { requestPanel(QStringLiteral("chain")); emit selectionStepRequested(); }
+    });
     connect(m_queue, &RowModel::revisionChanged, this, &App::queuePendingChanged);
     connect(m_log, &RowModel::revisionChanged, this, &App::recount);
     connect(m_project, &Project::notice, this, [this](const QString &text) { toast(text); });
@@ -61,6 +81,16 @@ App::~App()
     // The engine's jobs and threads go before the objects they report to.
     delete m_engine;
     m_engine = nullptr;
+    // These objects own background jobs too. Join them while the log store
+    // and other services are still alive, rather than relying on child order.
+    delete m_media;
+    m_media = nullptr;
+    delete m_undo;
+    m_undo = nullptr;
+    delete m_project;
+    m_project = nullptr;
+    delete m_catalog;
+    m_catalog = nullptr;
 }
 
 

@@ -13,11 +13,13 @@ ColumnLayout {
 
     property int index: -1
     readonly property var step: row.values
+    readonly property bool copyTrim: App.project.outputs.count > 0 && outputRow.values.reencodeReason === ""
     readonly property var params: sheet.step.params || {}
-    readonly property var spec: App.catalog.step(sheet.step.type || "")
+    readonly property var spec: App.catalog.revision >= 0 ? App.catalog.step(sheet.step.type || "") : ({})
     readonly property var common: sheet.spec.common || []
     readonly property var advanced: {
         // Curated extras, then every other option the filter has (from -h).
+        if (App.catalog.revision < 0) return [];
         const curated = (sheet.spec.common || []).concat(sheet.spec.advanced || []).map(o => o.key);
         const all = App.catalog.filterOptions(sheet.spec.primaryFilter || "");
         return (sheet.spec.advanced || []).concat(all.filter(o => curated.indexOf(o.key) < 0));
@@ -36,6 +38,12 @@ ColumnLayout {
         id: row
         model: App.project.steps
         row: sheet.index
+    }
+
+    ModelRow {
+        id: outputRow
+        model: App.project.outputs
+        row: App.project.currentOutput
     }
 
     Item { implicitHeight: 4 }
@@ -81,8 +89,10 @@ ColumnLayout {
         }
         Label {
             visible: sheet.step.type === "trim"
-            text: Glyphs.check + " " + qsTr("Sample-exact: atrim decodes, so the cut lands on the exact sample")
-            color: Theme.ok
+            text: Glyphs.check + " " + (sheet.copyTrim
+                  ? qsTr("Snaps to nearest packet: stream copy cuts at packet boundaries")
+                  : qsTr("Sample-exact: atrim decodes, so the cut lands on the exact sample"))
+            color: sheet.copyTrim ? Theme.warn : Theme.ok
             font.pixelSize: Metrics.fontCaption
             wrapMode: Text.Wrap
             Layout.fillWidth: true

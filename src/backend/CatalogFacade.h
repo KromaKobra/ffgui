@@ -3,6 +3,8 @@
 #include "Models.h"
 
 #include <catalog/Catalog.h>
+#include <caps/BuildInfo.h>
+#include <caps/HelpCache.h>
 
 #include <QQmlEngine>
 
@@ -15,7 +17,8 @@ class CatalogFacade : public QObject
     QML_NAMED_ELEMENT(Catalog)
     QML_UNCREATABLE("Owned by App")
 
-    Q_PROPERTY(QStringList categories READ categories CONSTANT)
+    Q_PROPERTY(int revision READ revision NOTIFY changed)
+    Q_PROPERTY(QStringList categories READ categories NOTIFY changed)
     Q_PROPERTY(StepCatalogModel *steps READ steps CONSTANT)
     Q_PROPERTY(PresetsModel *presets READ presets CONSTANT)
     Q_PROPERTY(PresetsModel *chainPresets READ chainPresets CONSTANT)
@@ -25,6 +28,7 @@ class CatalogFacade : public QObject
 public:
     explicit CatalogFacade(QObject *parent = nullptr);
 
+    int revision() const { return m_revision; }
     QStringList categories() const { return m_catalog.categories; }
     StepCatalogModel *steps() const { return m_steps; }
     PresetsModel *presets() const { return m_presets; }
@@ -41,12 +45,21 @@ public:
     Q_INVOKABLE QVariantMap preset(const QString &name) const;
     // Every option of a filter, encoder or muxer, from `ffmpeg -h ...=name`.
     // Empty until the help output has been read.
-    Q_INVOKABLE QVariantList filterOptions(const QString &name) const { return m_help.value(u"filter:" + name); }
-    Q_INVOKABLE QVariantList encoderOptions(const QString &name) const { return m_help.value(u"encoder:" + name); }
-    Q_INVOKABLE QVariantList muxerOptions(const QString &name) const { return m_help.value(u"muxer:" + name); }
+    Q_INVOKABLE QVariantList filterOptions(const QString &name) const { return options(QStringLiteral("filter"), name); }
+    Q_INVOKABLE QVariantList encoderOptions(const QString &name) const { return options(QStringLiteral("encoder"), name); }
+    Q_INVOKABLE QVariantList muxerOptions(const QString &name) const { return options(QStringLiteral("muxer"), name); }
 
     const ffgui::Catalog &catalog() const { return m_catalog; }
     void setCatalog(const ffgui::Catalog &catalog);
+
+    void setLog(ffgui::LogStore *log) { m_cache->setLog(log); }
+    void setCapabilities(const ffgui::BuildInfo &info);
+    bool filterTimeline(const QString &name) const { return m_build.filters.value(name).timeline; }
+    QString stepProblem(const ffgui::StepType &step) const;
+
+    bool savePreset(const QString &name, const QString &kind, const QVariantMap &output, const QList<QVariantMap> &nodes);
+    Q_INVOKABLE bool importPresets(const QUrl &file);
+    Q_INVOKABLE bool exportPresets(const QUrl &file) const;
 
     static QVariantMap optionMap(const ffgui::OptionSpec &option);
 
@@ -55,6 +68,14 @@ signals:
 
 private:
     void rebuild();
+    QVariantList options(const QString &kind, const QString &name) const;
+    bool persist(const ffgui::Catalog &catalog);
+    bool encoderAvailable(const QString &name) const;
+    bool muxerAvailable(const QString &name) const;
+    int m_revision = 0;
+    ffgui::BuildInfo m_build;
+    bool m_detected = false;
+    ffgui::HelpCache *m_cache;
 
     ffgui::Catalog m_catalog;
     QHash<QString, QVariantList> m_help;

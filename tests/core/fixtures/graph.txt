@@ -1,0 +1,344 @@
+Input #0, lavfi, from 'sine=duration=0.1:sample_rate=44100':
+  Duration: N/A, start: 0.000000, bitrate: 705 kb/s
+  Stream #0:0: Audio: pcm_s16le, 44100 Hz, mono, s16, 705 kb/s
+[out#0/null @ 0x55f7f804b740] No explicit maps, mapping streams automatically...
+[aost#0:0/pcm_s16le @ 0x55f7f804bac0] Created audio stream from input stream 0:0
+Stream mapping:
+  Stream #0:0 -> #0:0 (pcm_s16le (native) -> pcm_s16le (native))
+[aost#0:0/pcm_s16le @ 0x55f7f804bac0] Starting thread...
+[af#0:0 @ 0x55f7f804c540] Starting thread...
+[aist#0:0/pcm_s16le @ 0x55f7f804b5c0] [dec:pcm_s16le @ 0x55f7f804db00] Starting thread...
+[in#0/lavfi @ 0x55f7f8035a00] Starting thread...
+Press [q] to stop, [?] for help
+[in#0/lavfi @ 0x55f7f8035a00] EOF while reading input
+[in#0/lavfi @ 0x55f7f8035a00] Terminating thread with return code 0 (success)
+[graph_-1_in_0:0 @ 0x7f6dbc0030c0] tb:1/44100 samplefmt:s16 samplerate:44100 chlayout:mono
+[volume@test @ 0x7f6dbc002980] auto-inserting filter 'auto_aresample_0' between the filter 'graph_-1_in_0:0' and the filter 'volume@test'
+[format_out_#0:0 @ 0x7f6dbc003bc0] auto-inserting filter 'auto_aresample_1' between the filter 'volume@test' and the filter 'format_out_#0:0'
+[auto_aresample_0 @ 0x7f6dbc004d40] ch:1 chl:mono fmt:s16 r:44100Hz -> ch:1 chl:mono fmt:flt r:44100Hz
+[auto_aresample_0 @ 0x7f6dbc004d40] tb:0.000023 sample_rate:44100.000000 nb_channels:1.000000
+[volume@test @ 0x7f6dbc002980] n:nan t:nan pts:nan precision:float volume:0.500000 volume_dB:-6.020600
+[auto_aresample_1 @ 0x7f6dbc016180] ch:1 chl:mono fmt:flt r:44100Hz -> ch:1 chl:mono fmt:s16 r:48000Hz
+Output #0, null, to 'pipe:':
+  Metadata:
+    encoder         : Lavf63.1.102
+  Stream #0:0: Audio: pcm_s16le, 48000 Hz, mono, s16, 768 kb/s
+    Metadata:
+      encoder         : Lavc63.1.102 pcm_s16le
+[out#0/null @ 0x55f7f804b740] Starting thread...
+[aist#0:0/pcm_s16le @ 0x55f7f804b5c0] [dec:pcm_s16le @ 0x55f7f804db00] Decoder thread received EOF packet
+[aist#0:0/pcm_s16le @ 0x55f7f804b5c0] [dec:pcm_s16le @ 0x55f7f804db00] Decoder returned EOF, finishing
+[aost#0:0/pcm_s16le @ 0x55f7f804bac0] [enc:pcm_s16le @ 0x55f7f804c100] Encoder thread received EOF
+[aist#0:0/pcm_s16le @ 0x55f7f804b5c0] [dec:pcm_s16le @ 0x55f7f804db00] Terminating thread with return code 0 (success)
+[aost#0:0/pcm_s16le @ 0x55f7f804bac0] Terminating thread with return code 0 (success)
+[af#0:0 @ 0x55f7f804c540] Filtergraph returned EOF, finishing
+[af#0:0 @ 0x55f7f804c540] All consumers returned EOF
+[out#0/null @ 0x55f7f804b740] All streams finished
+[out#0/null @ 0x55f7f804b740] Terminating thread with return code 0 (success)
+[af#0:0 @ 0x55f7f804c540] Terminating thread with return code 0 (success)
+[out#0/null @ 0x55f7f804b740] Output file #0 (pipe:):
+[out#0/null @ 0x55f7f804b740]   Output stream #0:0 (audio): 3 frames encoded (2400 samples); 3 packets muxed (4800 bytes); 
+[out#0/null @ 0x55f7f804b740]   Total: 3 packets (4800 bytes) muxed
+[out#0/null @ 0x55f7f804b740] video:0KiB audio:5KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown
+size=N/A time=00:00:00.05 bitrate=N/A speed=40.8x elapsed=0:00:00.00    
+{
+    "graphs": [
+        {
+            "graph_index": -1,
+            "name": "Graph 0.-1",
+            "id": "Graph_0_-1",
+            "description": "volume@test=0.5",
+            "graph_inputs": [
+                {
+                    "input_index": 0,
+                    "filter_id": "G0_graph__1_in_0_0",
+                    "filter_name": "abuffer",
+                    "media_type": "audio"
+                }
+            ],
+            "graph_outputs": [
+                {
+                    "output_index": 0,
+                    "name": "#0:0",
+                    "filter_id": "G0_out__0_0",
+                    "filter_name": "abuffersink",
+                    "media_type": "audio"
+                }
+            ],
+            "filters": [
+                {
+                    "filter_name": "volume",
+                    "description": "Change input volume.",
+                    "nb_inputs": 1,
+                    "nb_outputs": 1,
+                    "filter_inputs": [
+                        {
+                            "input_index": 0,
+                            "pad_name": "default",
+                            "source_filter_id": "G0_auto_aresample_0",
+                            "source_pad_name": "default",
+                            "filter_id": "G0_volume_test",
+                            "media_type": "audio",
+                            "channel_layout": "mono",
+                            "channels": "1",
+                            "sample_rate": "44100",
+                            "sample_rate": "1/44100"
+                        }
+                    ],
+                    "filter_outputs": [
+                        {
+                            "dest_filter_id": "G0_auto_aresample_1",
+                            "output_index": 0,
+                            "pad_name": "default",
+                            "dest_pad_name": "default",
+                            "filter_id": "G0_volume_test",
+                            "media_type": "audio",
+                            "channel_layout": "mono",
+                            "channels": "1",
+                            "sample_rate": "44100",
+                            "sample_rate": "1/44100"
+                        }
+                    ]
+                },
+                {
+                    "filter_name": "abuffer",
+                    "description": "Buffer audio frames, and make them accessible to the filterchain.",
+                    "nb_inputs": 0,
+                    "nb_outputs": 1,
+                    "filter_inputs": [
+
+                    ],
+                    "filter_outputs": [
+                        {
+                            "dest_filter_id": "G0_auto_aresample_0",
+                            "output_index": 0,
+                            "pad_name": "default",
+                            "dest_pad_name": "default",
+                            "filter_id": "G0_graph__1_in_0_0",
+                            "media_type": "audio",
+                            "channel_layout": "mono",
+                            "channels": "1",
+                            "sample_rate": "44100",
+                            "sample_rate": "1/44100"
+                        }
+                    ]
+                },
+                {
+                    "filter_name": "abuffersink",
+                    "description": "Buffer audio frames, and make them available to the end of the filter graph.",
+                    "nb_inputs": 1,
+                    "nb_outputs": 0,
+                    "filter_inputs": [
+                        {
+                            "input_index": 0,
+                            "pad_name": "default",
+                            "source_filter_id": "G0_trim_for_output__0_0",
+                            "source_pad_name": "default",
+                            "filter_id": "G0_out__0_0",
+                            "media_type": "audio",
+                            "channel_layout": "mono",
+                            "channels": "1",
+                            "sample_rate": "48000",
+                            "sample_rate": "1/48000"
+                        }
+                    ],
+                    "filter_outputs": [
+
+                    ]
+                },
+                {
+                    "filter_name": "aformat",
+                    "description": "Convert the input audio to one of the specified formats.",
+                    "nb_inputs": 1,
+                    "nb_outputs": 1,
+                    "filter_inputs": [
+                        {
+                            "input_index": 0,
+                            "pad_name": "default",
+                            "source_filter_id": "G0_auto_aresample_1",
+                            "source_pad_name": "default",
+                            "filter_id": "G0_format_out__0_0",
+                            "media_type": "audio",
+                            "channel_layout": "mono",
+                            "channels": "1",
+                            "sample_rate": "48000",
+                            "sample_rate": "1/48000"
+                        }
+                    ],
+                    "filter_outputs": [
+                        {
+                            "dest_filter_id": "G0_trim_for_output__0_0",
+                            "output_index": 0,
+                            "pad_name": "default",
+                            "dest_pad_name": "default",
+                            "filter_id": "G0_format_out__0_0",
+                            "media_type": "audio",
+                            "channel_layout": "mono",
+                            "channels": "1",
+                            "sample_rate": "48000",
+                            "sample_rate": "1/48000"
+                        }
+                    ]
+                },
+                {
+                    "filter_name": "atrim",
+                    "description": "Pick one continuous section from the input, drop the rest.",
+                    "nb_inputs": 1,
+                    "nb_outputs": 1,
+                    "filter_inputs": [
+                        {
+                            "input_index": 0,
+                            "pad_name": "default",
+                            "source_filter_id": "G0_format_out__0_0",
+                            "source_pad_name": "default",
+                            "filter_id": "G0_trim_for_output__0_0",
+                            "media_type": "audio",
+                            "channel_layout": "mono",
+                            "channels": "1",
+                            "sample_rate": "48000",
+                            "sample_rate": "1/48000"
+                        }
+                    ],
+                    "filter_outputs": [
+                        {
+                            "dest_filter_id": "out__0_0",
+                            "output_index": 0,
+                            "pad_name": "default",
+                            "dest_pad_name": "default",
+                            "filter_id": "G0_trim_for_output__0_0",
+                            "media_type": "audio",
+                            "channel_layout": "mono",
+                            "channels": "1",
+                            "sample_rate": "48000",
+                            "sample_rate": "1/48000"
+                        }
+                    ]
+                },
+                {
+                    "filter_name": "aresample",
+                    "description": "Resample audio data.",
+                    "nb_inputs": 1,
+                    "nb_outputs": 1,
+                    "filter_inputs": [
+                        {
+                            "input_index": 0,
+                            "pad_name": "default",
+                            "source_filter_id": "in_0_0",
+                            "source_pad_name": "default",
+                            "filter_id": "G0_auto_aresample_0",
+                            "media_type": "audio",
+                            "channel_layout": "mono",
+                            "channels": "1",
+                            "sample_rate": "44100",
+                            "sample_rate": "1/44100"
+                        }
+                    ],
+                    "filter_outputs": [
+                        {
+                            "dest_filter_id": "G0_volume_test",
+                            "output_index": 0,
+                            "pad_name": "default",
+                            "dest_pad_name": "default",
+                            "filter_id": "G0_auto_aresample_0",
+                            "media_type": "audio",
+                            "channel_layout": "mono",
+                            "channels": "1",
+                            "sample_rate": "44100",
+                            "sample_rate": "1/44100"
+                        }
+                    ]
+                },
+                {
+                    "filter_name": "aresample",
+                    "description": "Resample audio data.",
+                    "nb_inputs": 1,
+                    "nb_outputs": 1,
+                    "filter_inputs": [
+                        {
+                            "input_index": 0,
+                            "pad_name": "default",
+                            "source_filter_id": "G0_volume_test",
+                            "source_pad_name": "default",
+                            "filter_id": "G0_auto_aresample_1",
+                            "media_type": "audio",
+                            "channel_layout": "mono",
+                            "channels": "1",
+                            "sample_rate": "44100",
+                            "sample_rate": "1/44100"
+                        }
+                    ],
+                    "filter_outputs": [
+                        {
+                            "dest_filter_id": "G0_format_out__0_0",
+                            "output_index": 0,
+                            "pad_name": "default",
+                            "dest_pad_name": "default",
+                            "filter_id": "G0_auto_aresample_1",
+                            "media_type": "audio",
+                            "channel_layout": "mono",
+                            "channels": "1",
+                            "sample_rate": "48000",
+                            "sample_rate": "1/48000"
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "inputfiles": [
+        {
+            "index": "0",
+            "demuxer_name": "lavfi",
+            "file_extension": "1:sample_rate=44100",
+            "url": "sine=duration=0.1:sample_rate=44100",
+            "inputstreams": [
+                {
+                    "id": "r_in_0_0",
+                    "name": "PCM signed 16-bit little-endian",
+                    "index": "0",
+                    "media_type": "audio"
+                }
+            ]
+        }
+    ],
+    "decoders": [
+        {
+            "source_id": "r_in_0_0",
+            "id": "in_0_0",
+            "name": "pcm_s16le",
+            "media_type": "audio"
+        }
+    ],
+    "encoders": [
+        {
+            "id": "out__0_0",
+            "dest_id": "r_out__0_0",
+            "name": "pcm_s16le",
+            "media_type": "audio"
+        }
+    ],
+    "outputfiles": [
+        {
+            "index": "0",
+            "muxer_name": "null",
+            "url": "pipe:",
+            "outputstreams": [
+                {
+                    "id": "r_out__0_0",
+                    "name": "PCM signed 16-bit little-endian",
+                    "index": "0",
+                    "media_type": "audio"
+                }
+            ]
+        }
+    ],
+    "streamlinks": [
+
+    ]
+}
+    
+[in#0/lavfi @ 0x55f7f8035a00] Input file #0 (sine=duration=0.1:sample_rate=44100):
+[in#0/lavfi @ 0x55f7f8035a00]   Input stream #0:0 (audio): 5 packets read (8820 bytes); 5 frames decoded; 0 decode errors (4410 samples); 
+[in#0/lavfi @ 0x55f7f8035a00]   Total: 5 packets (8820 bytes) demuxed
+
+Exiting with exit code 0

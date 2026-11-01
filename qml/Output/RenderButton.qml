@@ -10,6 +10,7 @@ RowLayout {
     spacing: 0
 
     FfButton {
+        objectName: visible ? "renderAll" : ""
         text: qsTr("Render")
         highlighted: true
         font.bold: true

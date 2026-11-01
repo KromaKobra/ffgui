@@ -66,13 +66,24 @@ Item {
             id: scroll
             Layout.fillWidth: true
             Layout.fillHeight: true
-            contentWidth: availableWidth
             clip: true
 
-            Loader {
-                width: scroll.availableWidth
-                sourceComponent: ({ none: projectSheet, input: inputSheet, track: trackSheet, step: stepSheet,
-                                    range: rangeSheet, output: outputSheet })[inspector.kind] ?? projectSheet
+            Flickable {
+                id: sheetViewport
+                contentWidth: width
+                contentHeight: sheetLoader.height
+                boundsBehavior: Flickable.StopAtBounds
+                clip: true
+
+                Loader {
+                    id: sheetLoader
+                    // Explicit content sizing also handles late model updates.
+                    height: (item as Item)?.implicitHeight ?? 0
+                    width: sheetViewport.width
+                    onLoaded: sheetViewport.contentY = 0
+                    sourceComponent: ({ none: projectSheet, input: inputSheet, track: trackSheet, step: stepSheet,
+                                        range: rangeSheet, output: outputSheet })[inspector.kind] ?? projectSheet
+                }
             }
         }
 

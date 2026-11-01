@@ -54,13 +54,13 @@
           ] },
         { "key": "compressor", "name": "Compressor", "category": "Volume & Dynamics", "glyph": "◧", "blurb": "Even out loud and quiet parts",
           "requires": ["acompressor"],
-          "template": "acompressor=threshold={threshold}dB:ratio={ratio}:attack={attack}:release={release}:makeup={makeup}dB:knee={knee}:detection={detection}",
+          "template": "acompressor=threshold={threshold}dB:ratio={ratio}:attack={attack}:release={release}:makeup={makeup}:knee={knee}:detection={detection}",
           "keywords": ["acompressor", "dynamics", "compress"],
           "out": { "fmt": "dbl" },
           "common": [
               { "key": "threshold", "label": "Threshold", "unit": "dB", "min": -60, "max": 0, "step": 0.5, "default": -18 },
               { "key": "ratio", "label": "Ratio", "unit": ": 1", "min": 1, "max": 20, "step": 0.1, "default": 3 },
-              { "key": "makeup", "label": "Make-up gain", "unit": "dB", "min": 0, "max": 36, "step": 0.5, "default": 2 }
+              { "key": "makeup", "label": "Make-up gain", "min": 1, "max": 64, "step": 0.5, "default": 2 }
           ],
           "advanced": [
               { "key": "attack", "label": "Attack", "unit": "ms", "min": 0.01, "max": 2000, "step": 1, "default": 20 },

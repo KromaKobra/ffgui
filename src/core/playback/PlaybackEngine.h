@@ -7,6 +7,7 @@
 #include <QPointer>
 #include <QStringList>
 #include <QTimer>
+#include <QMutex>
 
 #include <atomic>
 #include <memory>
@@ -53,6 +54,9 @@ public:
 
     void setVolume(double volume) { m_volume.store(float(volume)); }
     void setSpeed(double speed);
+    void setProcessedFilter(const QString &filter, bool alreadyAppliedLive = false);
+    void setProcessed(bool processed) { m_processed.store(processed); }
+    bool sendLiveCommand(const QString &target, const QString &key, const QString &value);
     // 1 per input channel to play, 0 to mute (solo).
     void setChannelGains(const std::vector<float> &gains);
 
@@ -75,6 +79,7 @@ signals:
 private:
     void startDecoder(double position);
     void stopDecoder();
+    QThread *launchDecoder(RingBuffer *ring, bool processed, double position);
     void render(float *out, qsizetype samples);
     void buildMatrix(int outChannels);
     void poll();
@@ -85,6 +90,17 @@ private:
     std::unique_ptr<QAudioSink> m_sink;
     std::unique_ptr<RingBuffer> m_ring;
     std::unique_ptr<RingBuffer> m_tap;
+    std::unique_ptr<RingBuffer> m_processedRing;
+    QThread *m_processedDecoder = nullptr;
+    std::atomic_bool m_suspendForEdit { false };
+    std::atomic<int> m_callbacks { 0 };
+    std::atomic_bool m_stopProcessed { false };
+    std::atomic_bool m_processedDone { false };
+    std::atomic_bool m_processed { true };
+    QString m_filter;
+    QMutex m_commandsMutex;
+    QList<QByteArray> m_commands;
+    QString m_decodeError;
     QThread *m_decoder = nullptr;
     std::atomic_bool m_stopDecoder { false };
     std::atomic_bool m_decoderDone { false };
@@ -93,11 +109,13 @@ private:
     std::atomic<float> m_volume { 0.8f };
     std::vector<std::atomic<float>> m_gains;
     std::vector<float> m_matrix;          // [out * inChannels + in]
+    std::vector<float> m_frameB;
     std::vector<float> m_frame;           // scratch, audio thread only
     int m_outChannels = 2;
     double m_startPosition = 0;
     double m_speed = 1;
     bool m_playing = false;
+    bool m_restarting = false;
     QString m_error;
     QTimer m_poll;
 };
