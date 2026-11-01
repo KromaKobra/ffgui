@@ -1,0 +1,13 @@
+module Quilt
+
+# Public API
+DockArea 1.0 DockArea.qml
+DockPanel 1.0 DockPanel.qml
+DockStyle 1.0 DockStyle.qml
+DockWindow 1.0 DockWindow.qml
+Dock 1.0 Dock.qml
+
+# Implementation details
+internal DockManager DockManager.qml
+internal DockStack DockStack.qml
+internal SplitHandles SplitHandles.qml

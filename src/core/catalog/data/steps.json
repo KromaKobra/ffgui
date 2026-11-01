@@ -1,0 +1,239 @@
+{
+    "comment": "Chain step types. Plain names first, ffmpeg names second (design principle 5). 'common' options sit in view; 'advanced' are curated extras, and the rest of each filter's options come from ffmpeg -h filter=. 'requires' names the filters a step needs (gated against ffmpeg -filters), 'library' is the name the step picker shows when one is missing. 'timeline' marks steps that change the timeline: they are left out of processed playback. 'builder' picks a named command builder; 'template' is the default one. 'out' is the format a step produces when known, until the negotiated graph replaces it.",
+    "categories": ["Time", "Volume & Dynamics", "EQ", "Restoration", "Effects", "Channels", "Speech", "Analysis"],
+    "steps": [
+        { "key": "trim", "name": "Trim", "category": "Time", "glyph": "✂", "blurb": "Keep one time range",
+          "requires": ["atrim", "asetpts"], "timeline": "trim", "builder": "trim",
+          "template": "atrim=start={start}:end={end},asetpts=PTS-STARTPTS",
+          "keywords": ["cut", "crop", "atrim", "start", "end"],
+          "common": [
+              { "key": "start", "label": "Start", "unit": "s", "min": 0, "max": 86400, "step": 0.01, "default": 0 },
+              { "key": "end", "label": "End", "unit": "s", "min": 0, "max": 86400, "step": 0.01, "default": 0 }
+          ] },
+        { "key": "fade", "name": "Fade", "category": "Time", "glyph": "◢", "blurb": "Fade in or out",
+          "requires": ["afade"], "template": "afade=t={t}:st={st}:d={d}:curve={curve}",
+          "keywords": ["afade", "fade in", "fade out"],
+          "common": [
+              { "key": "t", "label": "Direction", "type": "choice", "choices": ["in", "out"], "default": "in" },
+              { "key": "st", "label": "Starts at", "unit": "s", "min": 0, "max": 86400, "step": 0.1, "default": 0 },
+              { "key": "d", "label": "Length", "unit": "s", "min": 0.1, "max": 60, "step": 0.1, "default": 3 }
+          ],
+          "advanced": [
+              { "key": "curve", "label": "Curve", "type": "choice", "choices": ["tri", "qsin", "esin", "hsin", "log", "ipar", "qua", "cub", "squ", "cbr", "par", "exp"], "default": "tri" }
+          ] },
+        { "key": "pad", "name": "Pad with silence", "category": "Time", "glyph": "⇥", "blurb": "Add silence at the end",
+          "requires": ["apad"], "timeline": "pad", "template": "apad=pad_dur={pad_dur}",
+          "keywords": ["apad", "silence", "extend"],
+          "common": [
+              { "key": "pad_dur", "label": "Length", "unit": "s", "min": 0, "max": 600, "step": 0.5, "default": 2 }
+          ] },
+        { "key": "speed", "name": "Change speed", "category": "Time", "glyph": "»", "blurb": "Faster or slower, same pitch",
+          "requires": ["atempo"], "timeline": "speed", "template": "atempo={tempo}",
+          "keywords": ["atempo", "tempo", "faster", "slower"],
+          "common": [
+              { "key": "tempo", "label": "Speed", "unit": "×", "min": 0.5, "max": 2, "step": 0.05, "default": 1.25 }
+          ] },
+        { "key": "gain", "name": "Gain", "category": "Volume & Dynamics", "glyph": "▲", "blurb": "Louder or quieter",
+          "requires": ["volume"], "template": "volume={volume}dB",
+          "keywords": ["volume", "louder", "quieter", "amplify"],
+          "common": [
+              { "key": "volume", "label": "Gain", "unit": "dB", "min": -48, "max": 48, "step": 0.5, "default": 3 }
+          ] },
+        { "key": "loudnorm", "name": "Normalize", "category": "Volume & Dynamics", "glyph": "▤", "blurb": "Hit a loudness target (EBU R128)",
+          "requires": ["loudnorm"], "template": "loudnorm=I={I}:TP={TP}:LRA={LRA}:linear={linear}:dual_mono={dual_mono}",
+          "keywords": ["loudnorm", "loudness", "lufs", "ebu", "r128", "normalise"],
+          "out": { "rate": 192000, "fmt": "dbl" },
+          "common": [
+              { "key": "I", "label": "Target loudness", "unit": "LUFS", "min": -70, "max": -5, "step": 0.5, "default": -16 },
+              { "key": "TP", "label": "True peak ceiling", "unit": "dBTP", "min": -9, "max": 0, "step": 0.1, "default": -2 },
+              { "key": "LRA", "label": "Loudness range", "unit": "LU", "min": 1, "max": 50, "step": 0.5, "default": 11 }
+          ],
+          "advanced": [
+              { "key": "linear", "label": "Linear when possible", "type": "bool", "default": true },
+              { "key": "dual_mono", "label": "Treat mono as dual mono", "type": "bool", "default": false }
+          ] },
+        { "key": "compressor", "name": "Compressor", "category": "Volume & Dynamics", "glyph": "◧", "blurb": "Even out loud and quiet parts",
+          "requires": ["acompressor"],
+          "template": "acompressor=threshold={threshold}dB:ratio={ratio}:attack={attack}:release={release}:makeup={makeup}dB:knee={knee}:detection={detection}",
+          "keywords": ["acompressor", "dynamics", "compress"],
+          "out": { "fmt": "dbl" },
+          "common": [
+              { "key": "threshold", "label": "Threshold", "unit": "dB", "min": -60, "max": 0, "step": 0.5, "default": -18 },
+              { "key": "ratio", "label": "Ratio", "unit": ": 1", "min": 1, "max": 20, "step": 0.1, "default": 3 },
+              { "key": "makeup", "label": "Make-up gain", "unit": "dB", "min": 0, "max": 36, "step": 0.5, "default": 2 }
+          ],
+          "advanced": [
+              { "key": "attack", "label": "Attack", "unit": "ms", "min": 0.01, "max": 2000, "step": 1, "default": 20 },
+              { "key": "release", "label": "Release", "unit": "ms", "min": 0.01, "max": 9000, "step": 10, "default": 250 },
+              { "key": "knee", "label": "Knee", "unit": "", "min": 1, "max": 8, "step": 0.01, "default": 2.83 },
+              { "key": "detection", "label": "Detection", "type": "choice", "choices": ["rms", "peak"], "default": "rms" }
+          ] },
+        { "key": "limiter", "name": "Limiter", "category": "Volume & Dynamics", "glyph": "▔", "blurb": "Hard ceiling for peaks",
+          "requires": ["alimiter"], "template": "alimiter=limit={limit}dB:attack={attack}:release={release}",
+          "keywords": ["alimiter", "ceiling", "peak"],
+          "out": { "fmt": "dbl" },
+          "common": [
+              { "key": "limit", "label": "Ceiling", "unit": "dB", "min": -24, "max": 0, "step": 0.1, "default": -1 }
+          ],
+          "advanced": [
+              { "key": "attack", "label": "Attack", "unit": "ms", "min": 0.1, "max": 80, "step": 0.1, "default": 5 },
+              { "key": "release", "label": "Release", "unit": "ms", "min": 1, "max": 8000, "step": 1, "default": 50 }
+          ] },
+        { "key": "eq", "name": "EQ", "category": "EQ", "glyph": "∿", "blurb": "Low cut and one bell band",
+          "requires": ["highpass", "equalizer"], "builder": "eq",
+          "template": "highpass=f={hp},equalizer=f={f}:t=q:w={w}:g={g}",
+          "keywords": ["equalizer", "highpass", "bell", "tone"],
+          "out": { "fmt": "planar" },
+          "common": [
+              { "key": "hp", "label": "Low cut", "unit": "Hz", "min": 20, "max": 300, "step": 1, "default": 80 },
+              { "key": "f", "label": "Band frequency", "unit": "Hz", "min": 200, "max": 12000, "step": 10, "default": 3200 },
+              { "key": "g", "label": "Band gain", "unit": "dB", "min": -12, "max": 12, "step": 0.5, "default": 2.5 }
+          ],
+          "advanced": [
+              { "key": "w", "label": "Band width (Q)", "unit": "", "min": 0.1, "max": 4, "step": 0.1, "default": 1.2 }
+          ] },
+        { "key": "highpass", "name": "Low cut", "category": "EQ", "glyph": "⟋", "blurb": "Remove rumble below a frequency",
+          "requires": ["highpass"], "template": "highpass=f={f}:p={p}",
+          "keywords": ["highpass", "rumble", "hpf"],
+          "out": { "fmt": "planar" },
+          "common": [
+              { "key": "f", "label": "Frequency", "unit": "Hz", "min": 20, "max": 1000, "step": 1, "default": 100 }
+          ],
+          "advanced": [
+              { "key": "p", "label": "Poles", "type": "choice", "choices": ["2", "1"], "default": "2" }
+          ] },
+        { "key": "lowpass", "name": "High cut", "category": "EQ", "glyph": "⟍", "blurb": "Remove hiss above a frequency",
+          "requires": ["lowpass"], "template": "lowpass=f={f}",
+          "keywords": ["lowpass", "hiss", "lpf"],
+          "out": { "fmt": "planar" },
+          "common": [
+              { "key": "f", "label": "Frequency", "unit": "Hz", "min": 1000, "max": 20000, "step": 100, "default": 12000 }
+          ] },
+        { "key": "deesser", "name": "De-ess", "category": "EQ", "glyph": "ʃ", "blurb": "Tame harsh S sounds",
+          "requires": ["deesser"], "template": "deesser=i={i}:m={m}:f={f}",
+          "keywords": ["deesser", "sibilance", "ess"],
+          "out": { "fmt": "dbl" },
+          "common": [
+              { "key": "i", "label": "Intensity", "unit": "", "min": 0, "max": 1, "step": 0.01, "default": 0.5 }
+          ],
+          "advanced": [
+              { "key": "m", "label": "Max reduction", "unit": "", "min": 0, "max": 1, "step": 0.01, "default": 0.5 },
+              { "key": "f", "label": "Frequency (0 = low, 1 = high)", "unit": "", "min": 0, "max": 1, "step": 0.01, "default": 0.5 }
+          ] },
+        { "key": "denoise", "name": "Remove noise", "category": "Restoration", "glyph": "≈", "blurb": "Reduce steady background noise",
+          "requires": ["afftdn"], "template": "afftdn=nr={nr}:nf={nf}:tn={tn}:rf={rf}:nt={nt}",
+          "keywords": ["afftdn", "noise", "hiss", "denoise", "noise reduction"],
+          "out": { "fmt": "fltp" },
+          "common": [
+              { "key": "nr", "label": "Reduction", "unit": "dB", "min": 0.01, "max": 97, "step": 0.5, "default": 12 },
+              { "key": "nf", "label": "Noise floor", "unit": "dB", "min": -80, "max": -20, "step": 1, "default": -50 }
+          ],
+          "advanced": [
+              { "key": "tn", "label": "Track noise floor", "type": "bool", "default": false },
+              { "key": "rf", "label": "Residual floor", "unit": "dB", "min": -80, "max": -20, "step": 1, "default": -38 },
+              { "key": "nt", "label": "Noise type", "type": "choice", "choices": ["w", "v", "s"], "default": "w" }
+          ] },
+        { "key": "declick", "name": "Remove clicks", "category": "Restoration", "glyph": "⌁", "blurb": "Repair clicks and pops",
+          "requires": ["adeclick"], "template": "adeclick=t={t}:w={w}",
+          "keywords": ["adeclick", "clicks", "pops", "crackle"],
+          "out": { "fmt": "dblp" },
+          "common": [
+              { "key": "t", "label": "Threshold", "unit": "", "min": 1, "max": 100, "step": 1, "default": 2 }
+          ],
+          "advanced": [
+              { "key": "w", "label": "Window", "unit": "ms", "min": 10, "max": 100, "step": 1, "default": 55 }
+          ] },
+        { "key": "dehum", "name": "Remove hum", "category": "Restoration", "glyph": "∾", "blurb": "Notch out mains hum and its harmonics",
+          "requires": ["bandreject"], "builder": "dehum",
+          "template": "bandreject=f={f}:width_type=h:w={w}",
+          "keywords": ["bandreject", "hum", "mains", "notch", "50 hz", "60 hz"],
+          "out": { "fmt": "planar" },
+          "common": [
+              { "key": "f", "label": "Mains frequency", "type": "choice", "choices": ["60", "50"], "default": "60" },
+              { "key": "w", "label": "Width", "unit": "Hz", "min": 1, "max": 20, "step": 0.5, "default": 4 }
+          ],
+          "advanced": [
+              { "key": "harmonics", "label": "Harmonics", "unit": "", "min": 1, "max": 8, "step": 1, "default": 3 }
+          ] },
+        { "key": "declip", "name": "Repair clipping", "category": "Restoration", "glyph": "⌒", "blurb": "Rebuild clipped peaks",
+          "requires": ["adeclip"], "template": "adeclip=t={t}",
+          "keywords": ["adeclip", "clipping", "distortion"],
+          "out": { "fmt": "dblp" },
+          "common": [
+              { "key": "t", "label": "Threshold", "unit": "", "min": 1, "max": 100, "step": 1, "default": 10 }
+          ] },
+        { "key": "echo", "name": "Echo", "category": "Effects", "glyph": "◌", "blurb": "Repeating reflections",
+          "requires": ["aecho"], "template": "aecho=in_gain={in_gain}:out_gain={out_gain}:delays={delays}:decays={decays}",
+          "keywords": ["aecho", "delay", "reverb"],
+          "common": [
+              { "key": "delays", "label": "Delay", "unit": "ms", "min": 1, "max": 2000, "step": 1, "default": 400 },
+              { "key": "decays", "label": "Decay", "unit": "", "min": 0, "max": 1, "step": 0.01, "default": 0.4 }
+          ],
+          "advanced": [
+              { "key": "in_gain", "label": "Input gain", "unit": "", "min": 0, "max": 1, "step": 0.01, "default": 0.6 },
+              { "key": "out_gain", "label": "Output gain", "unit": "", "min": 0, "max": 1, "step": 0.01, "default": 0.8 }
+          ] },
+        { "key": "pitch", "name": "Pitch shift", "category": "Effects", "glyph": "♯", "blurb": "Change pitch, keep speed",
+          "requires": ["rubberband"], "library": "librubberband", "builder": "pitch",
+          "template": "rubberband=pitch={pitch}",
+          "keywords": ["rubberband", "pitch", "semitones", "transpose"],
+          "common": [
+              { "key": "semitones", "label": "Pitch", "unit": "st", "min": -12, "max": 12, "step": 0.1, "default": 0 }
+          ] },
+        { "key": "widen", "name": "Stereo widen", "category": "Channels", "glyph": "⇔", "blurb": "Spread the stereo image",
+          "requires": ["stereowiden"], "template": "stereowiden=delay={delay}:feedback={feedback}",
+          "keywords": ["stereowiden", "wide", "stereo"],
+          "out": { "fmt": "flt" },
+          "common": [
+              { "key": "delay", "label": "Delay", "unit": "ms", "min": 1, "max": 100, "step": 1, "default": 20 },
+              { "key": "feedback", "label": "Amount", "unit": "", "min": 0, "max": 0.9, "step": 0.01, "default": 0.3 }
+          ] },
+        { "key": "mono", "name": "Downmix to mono", "category": "Channels", "glyph": "◉", "blurb": "Sum all channels into one",
+          "requires": ["pan"], "builder": "mono", "template": "pan=mono|c0=0.5*c0+0.5*c1",
+          "keywords": ["pan", "mono", "downmix", "sum"],
+          "out": { "layout": "mono" } },
+        { "key": "swap", "name": "Swap channels", "category": "Channels", "glyph": "⇄", "blurb": "Left becomes right",
+          "requires": ["channelmap"], "builder": "swap", "template": "channelmap=map=FR-FL|FL-FR",
+          "keywords": ["channelmap", "swap", "left", "right"] },
+        { "key": "mix", "name": "Channel mix", "category": "Channels", "glyph": "▦", "blurb": "Custom routing matrix (from the Routing panel)",
+          "requires": ["pan"], "builder": "mix", "template": "pan={matrix}",
+          "keywords": ["pan", "matrix", "routing", "remix"],
+          "common": [
+              { "key": "matrix", "label": "Matrix", "type": "string", "default": "stereo|c0=c0|c1=c1" }
+          ] },
+        { "key": "crossfeed", "name": "Headphone crossfeed", "category": "Channels", "glyph": "⋈", "blurb": "Easier listening on headphones",
+          "requires": ["bs2b"], "library": "libbs2b", "template": "bs2b=profile={profile}",
+          "keywords": ["bs2b", "crossfeed", "headphones"],
+          "common": [
+              { "key": "profile", "label": "Profile", "type": "choice", "choices": ["default", "cmoy", "jmeier"], "default": "default" }
+          ] },
+        { "key": "speechnorm", "name": "Even out speech", "category": "Speech", "glyph": "☰", "blurb": "Level quiet and loud talkers",
+          "requires": ["speechnorm"], "template": "speechnorm=p={p}:e={e}",
+          "keywords": ["speechnorm", "voice", "speech", "level"],
+          "out": { "fmt": "dblp" },
+          "common": [
+              { "key": "p", "label": "Peak target", "unit": "", "min": 0, "max": 1, "step": 0.01, "default": 0.95 },
+              { "key": "e", "label": "Max expansion", "unit": "×", "min": 1, "max": 50, "step": 0.5, "default": 2 }
+          ] },
+        { "key": "transcribe", "name": "Transcribe", "category": "Speech", "glyph": "✎", "blurb": "Speech to text, kept in sync",
+          "requires": ["whisper"], "library": "whisper", "builder": "transcribe",
+          "template": "whisper=model={model}:destination={destination}:format=srt",
+          "keywords": ["whisper", "transcript", "subtitles", "speech to text", "srt"],
+          "common": [
+              { "key": "model", "label": "Model file", "type": "string", "default": "" }
+          ] },
+        { "key": "meter", "name": "Loudness meter", "category": "Analysis", "glyph": "◔", "blurb": "Measure loudness (passes audio through)",
+          "requires": ["ebur128"], "template": "ebur128=peak=true",
+          "keywords": ["ebur128", "loudness", "lufs", "meter"] },
+        { "key": "stats", "name": "Statistics", "category": "Analysis", "glyph": "Σ", "blurb": "Peak, RMS, DC offset per channel",
+          "requires": ["astats"], "template": "astats=metadata=1",
+          "keywords": ["astats", "statistics", "peak", "rms", "dc"] },
+        { "key": "silence", "name": "Find silence", "category": "Analysis", "glyph": "␣", "blurb": "Log every silent stretch",
+          "requires": ["silencedetect"], "template": "silencedetect=n={n}dB:d={d}",
+          "keywords": ["silencedetect", "silence", "gaps"],
+          "common": [
+              { "key": "n", "label": "Threshold", "unit": "dB", "min": -90, "max": -10, "step": 1, "default": -50 },
+              { "key": "d", "label": "Minimum length", "unit": "s", "min": 0.1, "max": 30, "step": 0.1, "default": 2 }
+          ] }
+    ]
+}

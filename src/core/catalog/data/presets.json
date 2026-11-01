@@ -1,0 +1,33 @@
+{
+    "comment": "Built-in presets. Output presets fill an output target (rate/depth/channels 0 = same as source). Chain presets replace the chain.",
+    "output": [
+        { "name": "Podcast MP3", "container": "mp3", "codec": "libmp3lame", "quality": 2, "rate": 44100, "depth": 0, "channels": 0,
+          "description": "VBR V2 MP3 at 44.1 kHz, what most podcast hosts expect" },
+        { "name": "Archive FLAC", "container": "flac", "codec": "flac", "quality": 8, "rate": 0, "depth": 0, "channels": 0,
+          "description": "Lossless, same rate and depth as the source" },
+        { "name": "Streaming Opus", "container": "opus", "codec": "libopus", "quality": 96, "rate": 48000, "depth": 0, "channels": 0,
+          "description": "96 kb/s Opus, transparent for most material" },
+        { "name": "Broadcast WAV", "container": "wav", "codec": "pcm_s24le", "quality": 0, "rate": 48000, "depth": 24, "channels": 0,
+          "description": "24-bit 48 kHz PCM" },
+        { "name": "Voice AAC", "container": "m4a", "codec": "aac", "quality": 96, "rate": 44100, "depth": 0, "channels": 1,
+          "description": "96 kb/s mono AAC for spoken word" }
+    ],
+    "chain": [
+        { "name": "Podcast voice", "description": "Low cut, presence, gentle compression, −16 LUFS",
+          "steps": [
+              { "type": "eq", "params": { "hp": 80, "f": 3200, "g": 2.5, "w": 1.2 } },
+              { "type": "compressor", "params": { "threshold": -18, "ratio": 3, "makeup": 2 } },
+              { "type": "loudnorm", "params": { "I": -16, "TP": -1.5, "LRA": 11 } }
+          ] },
+        { "name": "Field recording cleanup", "description": "Rumble cut, hum notch, noise reduction",
+          "steps": [
+              { "type": "highpass", "params": { "f": 60 } },
+              { "type": "dehum", "params": { "f": "60", "w": 4 } },
+              { "type": "denoise", "params": { "nr": 12, "nf": -50 } }
+          ] },
+        { "name": "Broadcast −23 LUFS", "description": "EBU R128 loudness with a −1 dBTP ceiling",
+          "steps": [
+              { "type": "loudnorm", "params": { "I": -23, "TP": -1, "LRA": 15 } }
+          ] }
+    ]
+}

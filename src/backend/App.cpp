@@ -1,0 +1,131 @@
+#include "App.h"
+
+#include <QClipboard>
+#include <QDesktopServices>
+#include <QDir>
+#include <QFileInfo>
+#include <QGuiApplication>
+#include <QProcess>
+#include <QTime>
+#include <QUrl>
+
+App::App(QObject *parent)
+    : QObject(parent)
+    , m_project(new Project(this))
+    , m_selection(new Selection(this))
+    , m_transport(new Transport(this))
+    , m_meters(new Meters(this))
+    , m_analysis(new Analysis(this))
+    , m_render(new Render(this))
+    , m_queue(new QueueModel(this))
+    , m_caps(new Capabilities(this))
+    , m_log(new LogModel(this))
+    , m_undo(new Undo(m_project->undoStack(), this))
+    , m_view(new ViewState(this))
+    , m_command(new Command(this))
+    , m_catalog(new CatalogFacade(this))
+    , m_transcript(new TranscriptModel(this))
+    , m_devices(new DevicesModel(this))
+    , m_destinations(new DestinationsModel(this))
+{
+    connect(m_queue, &RowModel::revisionChanged, this, &App::queuePendingChanged);
+    connect(m_log, &RowModel::revisionChanged, this, &App::recount);
+    connect(m_project, &Project::notice, this, [this](const QString &text) { toast(text); });
+}
+
+int App::queuePending() const
+{
+    int n = 0;
+    for (const QVariantMap &job : m_queue->rows()) {
+        const QString status = job.value(QStringLiteral("status")).toString();
+        n += status == u"queued" || status == u"running" || status == u"paused" ? 1 : 0;
+    }
+    return n;
+}
+
+QString App::version() const
+{
+    return QCoreApplication::applicationVersion();
+}
+
+void App::requestPanel(const QString &panelId, bool popOut)
+{
+    emit panelRequested(panelId, popOut);
+}
+
+void App::requestDialog(const QString &dialogId, const QVariantMap &options)
+{
+    emit dialogRequested(dialogId, options);
+}
+
+void App::toast(const QString &text, const QString &kind, const QString &actionText, const QString &actionId)
+{
+    emit toastRequested(text, kind, actionText, actionId);
+}
+
+void App::runAction(const QString &actionId)
+{
+    const qsizetype colon = actionId.indexOf(u':');
+    const QString verb = actionId.left(colon);
+    const QString arg = colon >= 0 ? actionId.mid(colon + 1) : QString();
+    if (verb == u"open")
+        QDesktopServices::openUrl(QUrl::fromLocalFile(arg));
+    else if (verb == u"reveal")
+        revealInFolder(arg);
+    else if (verb == u"panel")
+        requestPanel(arg);
+}
+
+void App::copyText(const QString &text)
+{
+    if (QClipboard *clipboard = QGuiApplication::clipboard())
+        clipboard->setText(text);
+    toast(tr("Copied to clipboard"));
+}
+
+void App::runCommand(const QString &)
+{
+    toast(tr("Running commands from the Console isn't available yet"));
+}
+
+void App::openInFfplay()
+{
+    toast(tr("Opening in ffplay isn't available yet"));
+}
+
+void App::revealInFolder(const QString &path)
+{
+    const QFileInfo info(path);
+    // The file manager's "show item" call selects the file; fall back to
+    // opening its folder.
+    const bool shown = QProcess::startDetached(
+        QStringLiteral("dbus-send"),
+        { QStringLiteral("--session"), QStringLiteral("--dest=org.freedesktop.FileManager1"),
+          QStringLiteral("--type=method_call"), QStringLiteral("/org/freedesktop/FileManager1"),
+          QStringLiteral("org.freedesktop.FileManager1.ShowItems"),
+          QStringLiteral("array:string:") + QUrl::fromLocalFile(info.absoluteFilePath()).toString(),
+          QStringLiteral("string:") });
+    if (!shown)
+        QDesktopServices::openUrl(QUrl::fromLocalFile(info.isDir() ? info.absoluteFilePath() : info.absolutePath()));
+}
+
+void App::logLine(const QString &level, const QString &text, const QString &source, const QString &jobId)
+{
+    m_log->append({ { "time", QTime::currentTime().toString(QStringLiteral("HH:mm:ss")) },
+                    { "jobId", jobId }, { "level", level }, { "text", text }, { "source", source } });
+}
+
+void App::recount()
+{
+    int warnings = 0, errors = 0;
+    for (const QVariantMap &e : m_log->rows()) {
+        const QString level = e.value(QStringLiteral("level")).toString();
+        warnings += level == u"warning" ? 1 : 0;
+        errors += level == u"error" ? 1 : 0;
+    }
+    if (warnings == m_warningCount && errors == m_errorCount)
+        return;
+    m_warningCount = warnings;
+    m_errorCount = errors;
+    emit logCountsChanged();
+}

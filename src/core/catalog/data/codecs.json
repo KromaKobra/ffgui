@@ -1,0 +1,43 @@
+{
+    "comment": "Audio encoders ffgui offers, gated against ffmpeg -encoders. 'codec' is the codec name ffprobe reports, used to decide whether a stream can be copied. 'quality' is the one control the Output bar shows for the encoder; 'size' says how to estimate kb/s from it (table: by quality value, bitrate: the value itself, pcmRatio: a share of the PCM rate, pcm: the PCM rate).",
+    "codecs": [
+        { "key": "libmp3lame", "label": "MP3 (LAME)", "codec": "mp3", "lossy": true,
+          "sampleFormats": ["fltp", "s32p", "s16p"], "sampleRates": [44100, 48000, 32000, 22050, 24000, 16000, 11025, 12000, 8000],
+          "quality": { "kind": "vbr", "label": "VBR quality", "flag": "-q:a", "min": 0, "max": 9, "step": 1, "default": 2 },
+          "size": { "model": "table", "table": [245, 225, 190, 175, 165, 130, 115, 100, 85, 65] } },
+        { "key": "aac", "label": "AAC", "codec": "aac", "lossy": true,
+          "sampleFormats": ["fltp"],
+          "quality": { "kind": "bitrate", "label": "Bitrate", "flag": "-b:a", "min": 32, "max": 320, "step": 8, "default": 160 },
+          "size": { "model": "bitrate" } },
+        { "key": "libopus", "label": "Opus", "codec": "opus", "lossy": true,
+          "sampleFormats": ["flt", "s16"], "sampleRates": [48000, 24000, 16000, 12000, 8000],
+          "quality": { "kind": "bitrate", "label": "Bitrate", "flag": "-b:a", "min": 6, "max": 256, "step": 2, "default": 96 },
+          "size": { "model": "bitrate" } },
+        { "key": "libvorbis", "label": "Vorbis", "codec": "vorbis", "lossy": true,
+          "sampleFormats": ["fltp"],
+          "quality": { "kind": "vbr", "label": "Quality", "flag": "-q:a", "min": 0, "max": 10, "step": 1, "default": 5 },
+          "size": { "model": "table", "table": [64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 500] } },
+        { "key": "flac", "label": "FLAC", "codec": "flac", "lossy": false,
+          "sampleFormats": ["s32", "s16"],
+          "quality": { "kind": "level", "label": "Compression", "flag": "-compression_level", "min": 0, "max": 12, "step": 1, "default": 8 },
+          "size": { "model": "pcmRatio", "base": 0.62, "perLevel": -0.008 } },
+        { "key": "alac", "label": "ALAC", "codec": "alac", "lossy": false,
+          "sampleFormats": ["s32p", "s16p"],
+          "size": { "model": "pcmRatio", "base": 0.6, "perLevel": 0 } },
+        { "key": "pcm_s16le", "label": "PCM 16-bit", "codec": "pcm_s16le", "lossy": false,
+          "sampleFormats": ["s16"], "depth": 16, "size": { "model": "pcm" } },
+        { "key": "pcm_s24le", "label": "PCM 24-bit", "codec": "pcm_s24le", "lossy": false,
+          "sampleFormats": ["s32"], "depth": 24, "size": { "model": "pcm" } },
+        { "key": "pcm_f32le", "label": "PCM 32-bit float", "codec": "pcm_f32le", "lossy": false,
+          "sampleFormats": ["flt"], "depth": 32, "size": { "model": "pcm" } }
+    ],
+    "containers": [
+        { "key": "mp3", "label": "MP3", "muxer": "mp3", "extension": "mp3", "codecs": ["libmp3lame"] },
+        { "key": "m4a", "label": "M4A", "muxer": "ipod", "extension": "m4a", "codecs": ["aac", "alac"] },
+        { "key": "opus", "label": "Opus", "muxer": "opus", "extension": "opus", "codecs": ["libopus"] },
+        { "key": "ogg", "label": "Ogg", "muxer": "ogg", "extension": "ogg", "codecs": ["libvorbis", "libopus", "flac"] },
+        { "key": "flac", "label": "FLAC", "muxer": "flac", "extension": "flac", "codecs": ["flac"] },
+        { "key": "wav", "label": "WAV", "muxer": "wav", "extension": "wav", "codecs": ["pcm_s16le", "pcm_s24le", "pcm_f32le"] },
+        { "key": "mka", "label": "Matroska audio", "muxer": "matroska", "extension": "mka", "codecs": ["flac", "libopus", "aac", "libmp3lame", "pcm_s24le"] }
+    ]
+}
